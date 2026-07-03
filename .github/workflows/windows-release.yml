@@ -21,9 +21,6 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Rebuild native addons for Windows
-        run: npm rebuild better-sqlite3
-
       - name: Build Next.js Application
         run: npm run build
 
@@ -32,8 +29,10 @@ jobs:
         run: |
           mkdir release
           cp -r .next/standalone/* release/
-          cp -r .next/static release/.next/static
-          cp -r public release/public
+          mkdir -p release/.next/static
+          cp -r .next/static/* release/.next/static/
+          mkdir -p release/public
+          cp -r public/* release/public/
           cp "scripts/Start Application.bat" release/
 
       - name: Download Portable Node.js (Windows x64)
