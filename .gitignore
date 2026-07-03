@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Databases and Local Data
+*.db
+*.db-journal
+
+# Uploads and User Data
+/public/uploads/
+/playwright-user-data/
+/playwright-browsers/
+
+# Windows Release Archive
+Application-Tracker-Windows.zip

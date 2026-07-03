@@ -1,0 +1,56 @@
+name: Build Windows Portable Release
+
+on:
+  workflow_dispatch:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Rebuild native addons for Windows
+        run: npm rebuild better-sqlite3
+
+      - name: Build Next.js Application
+        run: npm run build
+
+      - name: Prepare Release Folder
+        shell: bash
+        run: |
+          mkdir release
+          cp -r .next/standalone/* release/
+          cp -r .next/static release/.next/static
+          cp -r public release/public
+          cp "scripts/Start Application.bat" release/
+
+      - name: Download Portable Node.js (Windows x64)
+        shell: bash
+        run: |
+          curl -L -o node.zip https://nodejs.org/dist/v20.11.1/node-v20.11.1-win-x64.zip
+          unzip node.zip
+          mv node-v20.11.1-win-x64/node.exe release/node.exe
+          
+      - name: Create Zip Archive
+        shell: bash
+        run: |
+          cd release
+          zip -r ../Application-Tracker-Windows.zip *
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable-release
+          path: Application-Tracker-Windows.zip
