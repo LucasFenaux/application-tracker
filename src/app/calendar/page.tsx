@@ -78,12 +78,39 @@ export default async function CalendarPage() {
       <div className="glass-panel" style={{ padding: '1.5rem', marginTop: '1.5rem' }}>
         <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Recent Log</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {activities.slice(-10).reverse().map((a: any) => (
-            <div key={a.date} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem', borderBottom: '1px solid var(--surface-border)' }}>
-              <span style={{ color: 'var(--text-primary)' }}>{a.date}</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{a.actions}</span>
-            </div>
-          ))}
+          {activities.slice(-10).reverse().map((a: any) => {
+            const actionList = a.actions.split(', ');
+            
+            const getActionColor = (action: string) => {
+              if (action.includes('Applied')) return '#3b82f6';
+              if (action.includes('Interviewing')) return '#a855f7';
+              if (action.includes('Offer')) return '#22c55e';
+              if (action.includes('Rejected')) return '#ef4444';
+              if (action.includes('Queue')) return '#94a3b8';
+              if (action.includes('Resume')) return '#f59e0b';
+              return 'var(--text-secondary)';
+            };
+
+            return (
+              <div key={a.date} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '0.75rem', borderBottom: '1px solid var(--surface-border)' }}>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{a.date}</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
+                  {actionList.map((action: string, i: number) => (
+                    <span key={i} style={{ 
+                      fontSize: '0.75rem', 
+                      padding: '2px 8px', 
+                      borderRadius: '12px', 
+                      background: 'rgba(255,255,255,0.05)',
+                      color: getActionColor(action),
+                      border: `1px solid ${getActionColor(action)}40`
+                    }}>
+                      {action}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
           {activities.length === 0 && <span style={{ color: 'var(--text-secondary)' }}>No activity yet.</span>}
         </div>
       </div>

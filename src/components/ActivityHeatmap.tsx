@@ -38,7 +38,7 @@ export default function ActivityHeatmap({ activities }: { activities: any[] }) {
   return (
     <div className="heatmap-container glass-panel">
       <style>{`
-        .heatmap-container { padding: 1.5rem; overflow-x: auto; }
+        .heatmap-container { padding: 1.5rem; }
         .heatmap-grid { display: flex; gap: 4px; }
         .heatmap-col { display: flex; flex-direction: column; gap: 4px; }
         .heatmap-cell {
@@ -54,7 +54,7 @@ export default function ActivityHeatmap({ activities }: { activities: any[] }) {
         
         .tooltip {
           position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
-          background: #000; color: #fff; padding: 4px 8px; border-radius: 4px;
+          background: #000; color: #fff; padding: 6px 10px; border-radius: 4px;
           font-size: 0.75rem; white-space: nowrap; pointer-events: none;
           opacity: 0; transition: opacity 0.2s; z-index: 10; margin-bottom: 4px;
         }
@@ -62,26 +62,75 @@ export default function ActivityHeatmap({ activities }: { activities: any[] }) {
       `}</style>
 
       <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Activity (Last 90 Days)</h3>
-      <div className="heatmap-grid">
-        {weeks.map((week, i) => (
-          <div key={i} className="heatmap-col">
-            {week.map(day => {
-              const dateStr = format(day, 'yyyy-MM-dd');
-              const activity = activityMap.get(dateStr);
-              const count = activity ? activity.count : 0;
-              const actions = activity ? activity.actions : 'No activity';
-              
+      <div style={{ display: 'flex' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '18px', marginRight: '8px', fontSize: '10px', color: 'var(--text-secondary)', flexShrink: 0 }}>
+          <div style={{ height: '14px' }}></div>
+          <div style={{ height: '14px', lineHeight: '14px' }}>Mon</div>
+          <div style={{ height: '14px' }}></div>
+          <div style={{ height: '14px', lineHeight: '14px' }}>Wed</div>
+          <div style={{ height: '14px' }}></div>
+          <div style={{ height: '14px', lineHeight: '14px' }}>Fri</div>
+          <div style={{ height: '14px' }}></div>
+        </div>
+        <div style={{ paddingBottom: '8px' }}>
+          <div style={{ display: 'flex', gap: '4px', marginBottom: '4px', fontSize: '10px', color: 'var(--text-secondary)' }}>
+            {weeks.map((week, i) => {
+              const currentMonth = format(week[0], 'MMM');
+              const prevWeek = i > 0 ? weeks[i-1][0] : null;
+              const showMonth = !prevWeek || format(prevWeek, 'MMM') !== currentMonth;
               return (
-                <div key={dateStr} className={`heatmap-cell ${getIntensityClass(count)}`}>
-                  <div className="tooltip">
-                    <strong>{format(day, 'MMM d, yyyy')}</strong>
-                    <div style={{ color: 'var(--text-secondary)' }}>{actions}</div>
-                  </div>
+                <div key={`m-${i}`} style={{ width: '14px', flexShrink: 0, overflow: 'visible', whiteSpace: 'nowrap' }}>
+                  {showMonth ? currentMonth : ''}
                 </div>
               );
             })}
           </div>
-        ))}
+          <div className="heatmap-grid" style={{ minWidth: 'max-content' }}>
+            {weeks.map((week, i) => (
+              <div key={i} className="heatmap-col">
+                {week.map(day => {
+                  const dateStr = format(day, 'yyyy-MM-dd');
+                  const activity = activityMap.get(dateStr);
+                  const count = activity ? activity.count : 0;
+                  
+                  let summaryElements: React.ReactNode = 'No activity';
+                  if (activity && activity.actions) {
+                    const actionCounts = activity.actions.split(', ').reduce((acc: any, curr: string) => {
+                      acc[curr] = (acc[curr] || 0) + 1;
+                      return acc;
+                    }, {});
+                    
+                    const getActionColor = (action: string) => {
+                      if (action.includes('Applied')) return '#3b82f6';
+                      if (action.includes('Interviewing')) return '#a855f7';
+                      if (action.includes('Offer')) return '#22c55e';
+                      if (action.includes('Rejected')) return '#ef4444';
+                      if (action.includes('Queue')) return '#94a3b8';
+                      if (action.includes('Resume')) return '#f59e0b';
+                      return 'var(--text-secondary)';
+                    };
+
+                    summaryElements = Object.entries(actionCounts).map(([key, val]) => (
+                      <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ color: 'var(--text-secondary)', width: '12px', textAlign: 'right' }}>{val as React.ReactNode}x</span>
+                        <span style={{ color: getActionColor(key), fontWeight: 600 }}>{key}</span>
+                      </div>
+                    ));
+                  }
+                  
+                  return (
+                    <div key={dateStr} className={`heatmap-cell ${getIntensityClass(count)}`} style={{ flexShrink: 0 }}>
+                      <div className="tooltip">
+                        <strong style={{ display: 'block', marginBottom: '4px' }}>{format(day, 'MMM d, yyyy')}</strong>
+                        <div style={{ textAlign: 'left', lineHeight: 1.5 }}>{summaryElements}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
