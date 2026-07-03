@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: system-ui, sans-serif; width: 320px; padding: 15px; margin: 0; }
+    h3 { margin-top: 0; color: #1e293b; font-size: 16px; margin-bottom: 12px; }
+    button { 
+      width: 100%; 
+      padding: 10px; 
+      background: #2563eb; 
+      color: white; 
+      border: none; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      font-weight: 600;
+      transition: background 0.2s;
+      margin-bottom: 8px;
+    }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #94a3b8; cursor: not-allowed; }
+    
+    #teachBtn { background: #8b5cf6; }
+    #teachBtn:hover { background: #7c3aed; }
+    
+    #manualEntryBtn { background: #f59e0b; }
+    #manualEntryBtn:hover { background: #d97706; }
+    
+    #whitelistBtn { background: #10b981; display: none; }
+    #whitelistBtn:hover { background: #059669; }
+
+    #forgetBtn { background: #dc2626; display: none; }
+    #forgetBtn:hover { background: #b91c1c; }
+
+    #status { margin-top: 12px; font-size: 0.9em; color: #64748b; text-align: center; }
+
+    #manualForm { display: none; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
+    #manualForm input, #manualForm textarea { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-family: inherit; font-size: 13px; }
+    #manualForm textarea { resize: vertical; min-height: 80px; }
+    #manualForm label { font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 2px; }
+    #submitManualBtn { background: #16a34a; margin-top: 5px; }
+    #submitManualBtn:hover { background: #15803d; }
+  </style>
+</head>
+<body>
+  <h3>AppTracker Extension</h3>
+  
+  <div id="mainActions">
+      <button id="saveBtn">Save Current Page (Auto)</button>
+      <button id="manualEntryBtn">Enter Job Manually</button>
+      <button id="teachBtn">Teach Job Layout</button>
+      <button id="whitelistBtn">Add to Whitelist</button>
+      <button id="forgetBtn">Forget Learned Layout</button>
+  </div>
+  
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
