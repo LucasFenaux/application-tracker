@@ -146,6 +146,10 @@ export function getDb() {
       db.exec('ALTER TABLE jobs ADD COLUMN deadline TEXT;');
     } catch (e) {}
 
+    try {
+      db.exec('ALTER TABLE jobs ADD COLUMN latest_resume_suggestions TEXT;');
+    } catch (e) {}
+
     // Initialize default settings
     db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('calibration_mode', 'simple');
     db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('calibration_min', '0.55');

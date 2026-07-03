@@ -3,16 +3,17 @@
 import { Trash2 } from 'lucide-react';
 import { deleteJob } from '@/app/actions';
 
-export default function DeleteJobButton({ id }: { id: number }) {
+export default function DeleteJobButton({ id, onSuccess }: { id: number, onSuccess?: () => void }) {
   return (
     <button 
-      onClick={(e) => {
+      onClick={async (e) => {
         e.preventDefault();
         e.stopPropagation();
         if (confirm('Are you sure you want to delete this application?')) {
-          deleteJob(id);
+          await deleteJob(id);
+          if (onSuccess) onSuccess();
         }
-      }} 
+      }}  
       className="btn-secondary"
       style={{ padding: '4px 8px', color: '#ef4444', borderColor: '#ef4444' }}
       title="Delete Application"

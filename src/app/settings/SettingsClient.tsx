@@ -75,6 +75,7 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
   // AI Models State
   const [aiProvider, setAiProvider] = useState<'ollama' | 'builtin'>(settings.ai_provider || 'ollama');
   const [aiOllamaModel, setAiOllamaModel] = useState(settings.ai_ollama_model || 'deepseek-r1');
+  const [aiBuiltinModel, setAiBuiltinModel] = useState(settings.ai_builtin_model || 'Xenova/TinyLlama-1.1B-Chat-v1.0');
   const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
   const [isSavingAiModels, setIsSavingAiModels] = useState(false);
 
@@ -284,6 +285,7 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
     setIsSavingAiModels(true);
     await updateSetting('ai_provider', aiProvider);
     await updateSetting('ai_ollama_model', aiOllamaModel);
+    await updateSetting('ai_builtin_model', aiBuiltinModel);
     setIsSavingAiModels(false);
   };
 
@@ -746,6 +748,22 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
                       )}
                     </select>
                   </div>
+                </div>
+              )}
+              
+              {aiProvider === 'builtin' && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>Built-in Quantized Model</label>
+                  <select 
+                    value={aiBuiltinModel} 
+                    onChange={(e) => setAiBuiltinModel(e.target.value)}
+                    style={{ width: '100%', padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                  >
+                    <option value="Xenova/TinyLlama-1.1B-Chat-v1.0">TinyLlama 1.1B (Fastest ~700MB)</option>
+                    <option value="Xenova/Qwen1.5-0.5B-Chat">Qwen 1.5 0.5B (Tiny & Smart ~400MB)</option>
+                    <option value="Xenova/Qwen1.5-1.8B-Chat">Qwen 1.5 1.8B (Stronger ~1.2GB)</option>
+                    <option value="Xenova/Phi-3-mini-4k-instruct">Phi-3 Mini 3.8B (Very Strong ~2.4GB)</option>
+                  </select>
                 </div>
               )}
               

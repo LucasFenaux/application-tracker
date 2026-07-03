@@ -122,6 +122,7 @@ export async function updateJobStage(id: number, stage: string) {
   logActivityInternal(`Moved to ${stage}`, id);
   
   revalidatePath('/');
+  revalidatePath('/board');
 }
 
 export async function deleteJob(id: number) {
@@ -380,6 +381,7 @@ Please suggest exactly 3 to 5 specific, actionable bullet point tweaks I should 
         thinking = thinkMatch[1].trim();
         suggestions = suggestions.replace(/<think>[\s\S]*?<\/think>/, '').trim();
       }
+      db.prepare('UPDATE jobs SET latest_resume_suggestions = ? WHERE id = ?').run(suggestions, jobId);
       return { success: true, suggestions, thinking };
     } catch (err: any) {
       if (err.message === 'OLLAMA_NOT_RUNNING') {
@@ -392,6 +394,7 @@ Please suggest exactly 3 to 5 specific, actionable bullet point tweaks I should 
     }
   } else {
     const suggestions = await generateTextBuiltin(prompt);
+    db.prepare('UPDATE jobs SET latest_resume_suggestions = ? WHERE id = ?').run(suggestions, jobId);
     return { success: true, suggestions };
   }
 }

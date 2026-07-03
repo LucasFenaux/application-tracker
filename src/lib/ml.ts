@@ -33,8 +33,9 @@ class TextGenerationPipeline {
   static model = 'Xenova/TinyLlama-1.1B-Chat-v1.0';
   static instance: any = null;
 
-  static async getInstance(progress_callback?: Function) {
-    if (this.instance === null) {
+  static async getInstance(modelName: string, progress_callback?: Function) {
+    if (this.instance === null || this.model !== modelName) {
+      this.model = modelName;
       this.instance = pipeline(this.task as any, this.model, { 
         progress_callback,
         // Quantized models take less RAM
@@ -47,7 +48,12 @@ class TextGenerationPipeline {
 
 export async function generateTextBuiltin(prompt: string): Promise<string> {
   try {
-    const generator = await TextGenerationPipeline.getInstance();
+    const { getDb } = await import('@/lib/db');
+    const db = getDb();
+    const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_builtin_model') as { value: string };
+    const modelName = modelSetting ? modelSetting.value : 'Xenova/TinyLlama-1.1B-Chat-v1.0';
+
+    const generator = await TextGenerationPipeline.getInstance(modelName);
     const output = await generator(prompt, { 
       max_new_tokens: 400,
       temperature: 0.7,
@@ -76,7 +82,7 @@ export async function generateTextOllama(prompt: string): Promise<string> {
         prompt: prompt,
         stream: false
       }),
-      signal: AbortSignal.timeout(60000) // 60s timeout for reasoning models
+      signal: AbortSignal.timeout(300000) // 5m timeout for reasoning models with large contexts
     });
 
     if (!response.ok) {

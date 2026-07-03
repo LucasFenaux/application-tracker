@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
 import { Briefcase, LayoutDashboard, Calendar, FolderOpen, Settings, Globe, Puzzle } from 'lucide-react';
+import ChatBot from '@/components/ChatBot';
 
 export const metadata: Metadata = {
   title: 'Application Tracker',
@@ -66,6 +67,7 @@ export default function RootLayout({
           <main className="main-content">
             {children}
           </main>
+          <ChatBot />
         </div>
       </body>
     </html>

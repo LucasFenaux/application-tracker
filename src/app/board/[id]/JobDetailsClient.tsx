@@ -3,11 +3,14 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { updateJobNotes, attachMaterialToJob, generateResumeSuggestions, removeMaterialFromJob, updateJobDetails, updateJobDeadline } from '@/app/actions';
-import { Save, Paperclip, ExternalLink, ArrowLeft, DownloadCloud, Wand2, AlertTriangle, Edit2, X, Trash2, CalendarIcon, Clock } from 'lucide-react';
+import { updateJobNotes, attachMaterialToJob, generateResumeSuggestions, removeMaterialFromJob, updateJobDetails, updateJobDeadline, updateJobStage } from '@/app/actions';
+import { Save, Paperclip, ExternalLink, ArrowLeft, DownloadCloud, Wand2, AlertTriangle, Edit2, X, Trash2, CalendarIcon, Clock, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import DeleteJobButton from '@/components/DeleteJobButton';
 
 export default function JobDetailsClient({ job, jobMaterials, allMaterials, aiOllamaModel }: { job: any, jobMaterials: any[], allMaterials: any[], aiOllamaModel: string }) {
+  const router = useRouter();
   const [notes, setNotes] = useState(job.notes || '');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -23,10 +26,14 @@ export default function JobDetailsClient({ job, jobMaterials, allMaterials, aiOl
   const [deadline, setDeadline] = useState(job.deadline || '');
   const [isSavingDeadline, setIsSavingDeadline] = useState(false);
 
+  // Stage State
+  const [stage, setStage] = useState(job.stage);
+  const [isUpdatingStage, setIsUpdatingStage] = useState(false);
+
   // AI Tailor State
   const [tailorMaterialId, setTailorMaterialId] = useState<number | ''>(jobMaterials.length > 0 ? jobMaterials[0].id : '');
   const [tailorContextMaterialIds, setTailorContextMaterialIds] = useState<number[]>([]);
-  const [suggestions, setSuggestions] = useState('');
+  const [suggestions, setSuggestions] = useState(job.latest_resume_suggestions || '');
   const [thinking, setThinking] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showOllamaFallback, setShowOllamaFallback] = useState(false);
@@ -161,9 +168,12 @@ export default function JobDetailsClient({ job, jobMaterials, allMaterials, aiOl
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <h1 className="page-title">{job.title}</h1>
-                <button className="btn-secondary" style={{ padding: '6px' }} onClick={() => setIsEditingJob(true)} title="Edit Job">
-                  <Edit2 size={14} />
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button className="btn-secondary" style={{ padding: '6px' }} onClick={() => setIsEditingJob(true)} title="Edit Job">
+                    <Edit2 size={14} />
+                  </button>
+                  <DeleteJobButton id={job.id} onSuccess={() => router.push('/board')} />
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{job.company}</p>
@@ -171,9 +181,39 @@ export default function JobDetailsClient({ job, jobMaterials, allMaterials, aiOl
               </div>
             </div>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-              <span className="kanban-badge" style={{ backgroundColor: `var(--stage-${job.stage.toLowerCase()})`, fontSize: '1rem', padding: '4px 12px' }}>
-                {job.stage}
-              </span>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <select
+                  className="kanban-badge"
+                  style={{ 
+                    backgroundColor: `var(--stage-${stage.toLowerCase()})`, 
+                    fontSize: '1rem', 
+                    padding: '4px 24px 4px 12px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    appearance: 'none',
+                    outline: 'none',
+                    color: 'white',
+                    fontWeight: 600,
+                    opacity: isUpdatingStage ? 0.7 : 1
+                  }}
+                  value={stage}
+                  onChange={async (e) => {
+                    const newStage = e.target.value;
+                    setStage(newStage);
+                    setIsUpdatingStage(true);
+                    await updateJobStage(job.id, newStage);
+                    setIsUpdatingStage(false);
+                  }}
+                  disabled={isUpdatingStage}
+                >
+                  {['Queue', 'Applied', 'Interviewing', 'Offer', 'Rejected'].map(s => (
+                    <option key={s} value={s} style={{ backgroundColor: 'var(--surface)', color: 'var(--text-primary)' }}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} color="white" style={{ position: 'absolute', right: '8px', pointerEvents: 'none' }} />
+              </div>
               {job.url && (
                 <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-secondary">
                   <ExternalLink size={18} /> Posting
