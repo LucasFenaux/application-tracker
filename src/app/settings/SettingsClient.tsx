@@ -2,11 +2,23 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPrompt, updatePrompt, deletePrompt, setActivePrompt, updateSetting, startSmartCalibration, getCalibrationStatus } from '@/app/actions';
-import { Settings, Save, Plus, Trash2, CheckCircle2, Sliders, FileText, Wand2, Loader2, BarChart2, Globe } from 'lucide-react';
+import { Settings, Save, Plus, Trash2, CheckCircle2, Sliders, FileText, Wand2, Loader2, BarChart2, Globe, RefreshCw } from 'lucide-react';
 
 export default function SettingsClient({ prompts, settings, materials }: { prompts: any[], settings: any, materials: any[] }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'prompts' | 'calibration' | 'scraper' | 'system'>('prompts');
+  
+  useEffect(() => {
+    const saved = localStorage.getItem('settingsTab');
+    if (saved && ['prompts', 'calibration', 'scraper', 'system'].includes(saved)) {
+      setActiveTab(saved as any);
+    }
+  }, []);
+
+  const handleTabChange = (tab: 'prompts' | 'calibration' | 'scraper' | 'system') => {
+    setActiveTab(tab);
+    localStorage.setItem('settingsTab', tab);
+  };
   
   const [scraperSites, setScraperSites] = useState<{name: string, url: string}[]>(() => {
     try {
@@ -76,8 +88,15 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
   const [aiProvider, setAiProvider] = useState<'ollama' | 'builtin'>(settings.ai_provider || 'ollama');
   const [aiOllamaModel, setAiOllamaModel] = useState(settings.ai_ollama_model || 'deepseek-r1');
   const [aiBuiltinModel, setAiBuiltinModel] = useState(settings.ai_builtin_model || 'Xenova/TinyLlama-1.1B-Chat-v1.0');
+  const [scraperAiModel, setScraperAiModel] = useState(settings.scraper_ai_model || 'deepseek-r1');
   const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
   const [isSavingAiModels, setIsSavingAiModels] = useState(false);
+
+  // Bulk Cleanup State
+  const [cleanupStatus, setCleanupStatus] = useState<any>(null);
+  const [queuedJobsCount, setQueuedJobsCount] = useState<number | null>(null);
+  const [isStartingCleanup, setIsStartingCleanup] = useState(false);
+  const [cleanupPause, setCleanupPause] = useState(settings.cleanup_pause_seconds || '0');
 
   useEffect(() => {
     import('@/app/actions').then(({ getAvailableOllamaModels }) => {
@@ -141,6 +160,27 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
 
     return () => clearInterval(interval);
   }, [isCalibrating]);
+
+  // Bulk Cleanup polling
+  useEffect(() => {
+    if (activeTab !== 'system') return;
+    
+    const fetchCleanupStatus = async () => {
+      try {
+        const { getCleanupStatus, getQueuedCleanups } = await import('@/app/actions');
+        const status = await getCleanupStatus();
+        setCleanupStatus(status);
+        const queued = await getQueuedCleanups();
+        setQueuedJobsCount(queued.length);
+      } catch (err) {
+        console.error('Failed to fetch cleanup status', err);
+      }
+    };
+
+    fetchCleanupStatus();
+    const interval = setInterval(fetchCleanupStatus, 3000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
 
   const handleModeChange = async (mode: 'strict' | 'smart') => {
     if (mode === 'smart' && curve.length === 0) {
@@ -286,7 +326,24 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
     await updateSetting('ai_provider', aiProvider);
     await updateSetting('ai_ollama_model', aiOllamaModel);
     await updateSetting('ai_builtin_model', aiBuiltinModel);
+    await updateSetting('scraper_ai_model', scraperAiModel);
+    await updateSetting('cleanup_pause_seconds', cleanupPause.toString());
     setIsSavingAiModels(false);
+  };
+
+  const handleStartCleanup = async () => {
+    setIsStartingCleanup(true);
+    try {
+      const { startBulkCleanup } = await import('@/app/actions');
+      const res = await startBulkCleanup();
+      if (!res.success) {
+        alert(`Error: ${res.error}`);
+      }
+    } catch (e: any) {
+      alert(`Error starting cleanup: ${e.message}`);
+    } finally {
+      setIsStartingCleanup(false);
+    }
   };
 
   const handleSaveScraperSites = async (newSites: {name: string, url: string}[]) => {
@@ -348,16 +405,16 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
       </div>
 
       <div className="tabs" style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--surface-border)', marginBottom: '2rem' }}>
-        <button className={`tab-button ${activeTab === 'prompts' ? 'active' : ''}`} onClick={() => setActiveTab('prompts')} style={{ padding: '0.75rem 1rem', borderBottom: activeTab === 'prompts' ? '2px solid var(--accent-color)' : 'none', color: activeTab === 'prompts' ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
+        <button className={`tab-button ${activeTab === 'prompts' ? 'active' : ''}`} onClick={() => handleTabChange('prompts')} style={{ padding: '0.75rem 1rem', borderBottom: activeTab === 'prompts' ? '2px solid var(--accent-color)' : 'none', color: activeTab === 'prompts' ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
           Resume Analysis Prompts
         </button>
-        <button className={`tab-button ${activeTab === 'calibration' ? 'active' : ''}`} onClick={() => setActiveTab('calibration')} style={{ padding: '0.75rem 1rem', borderBottom: activeTab === 'calibration' ? '2px solid var(--accent-color)' : 'none', color: activeTab === 'calibration' ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
+        <button className={`tab-button ${activeTab === 'calibration' ? 'active' : ''}`} onClick={() => handleTabChange('calibration')} style={{ padding: '0.75rem 1rem', borderBottom: activeTab === 'calibration' ? '2px solid var(--accent-color)' : 'none', color: activeTab === 'calibration' ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
           AI Match Calibration
         </button>
-        <button className={`tab-button ${activeTab === 'scraper' ? 'active' : ''}`} onClick={() => setActiveTab('scraper')} style={{ padding: '0.75rem 1rem', borderBottom: activeTab === 'scraper' ? '2px solid var(--accent-color)' : 'none', color: activeTab === 'scraper' ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
+        <button className={`tab-button ${activeTab === 'scraper' ? 'active' : ''}`} onClick={() => handleTabChange('scraper')} style={{ padding: '0.75rem 1rem', borderBottom: activeTab === 'scraper' ? '2px solid var(--accent-color)' : 'none', color: activeTab === 'scraper' ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
           Automated Scraper
         </button>
-        <button className={`tab-button ${activeTab === 'system' ? 'active' : ''}`} onClick={() => setActiveTab('system')} style={{ padding: '0.75rem 1rem', borderBottom: activeTab === 'system' ? '2px solid var(--accent-color)' : 'none', color: activeTab === 'system' ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
+        <button className={`tab-button ${activeTab === 'system' ? 'active' : ''}`} onClick={() => handleTabChange('system')} style={{ padding: '0.75rem 1rem', borderBottom: activeTab === 'system' ? '2px solid var(--accent-color)' : 'none', color: activeTab === 'system' ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
           System
         </button>
       </div>
@@ -580,7 +637,32 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
                     </div>
                   )}
                 </div>
+
               )}
+              
+              <div style={{ background: 'rgba(0,0,0,0.1)', border: '1px solid var(--surface-border)', padding: '1.5rem', borderRadius: '8px', marginTop: '2rem' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Data Maintenance</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <h4 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Recalculate Match Scores</h4>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                      Force a bulk recalculation of semantic match scores for all previously AI-cleaned jobs. This takes a few seconds and uses your active AI matching settings.
+                    </p>
+                    <button 
+                      className="btn-secondary" 
+                      onClick={async () => {
+                        const res = await fetch('/api/recalc');
+                        const data = await res.json();
+                        alert(data.message || 'Recalculation complete.');
+                      }} 
+                      style={{ alignSelf: 'flex-start', color: 'var(--text-primary)' }}
+                    >
+                      <RefreshCw size={16} style={{ display: 'inline', marginRight: '6px' }} /> 
+                      Recalculate All Scores
+                    </button>
+                  </div>
+                </div>
+              </div>
         </div>
       )}
 
@@ -750,6 +832,27 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
                   </div>
                 </div>
               )}
+
+              {aiProvider === 'ollama' && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>Ollama Scraper Enhancement Model</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <select 
+                      value={scraperAiModel} 
+                      onChange={(e) => setScraperAiModel(e.target.value)}
+                      style={{ flex: 1, padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                    >
+                      {availableOllamaModels.map(m => (
+                        <option key={`scraper-${m}`} value={m}>{m}</option>
+                      ))}
+                      {!availableOllamaModels.includes(scraperAiModel) && (
+                        <option value={scraperAiModel}>{scraperAiModel}</option>
+                      )}
+                    </select>
+                  </div>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>Recommended: Fast 8B models (e.g. Llama-3 8B) to keep scraping speed high.</p>
+                </div>
+              )}
               
               {aiProvider === 'builtin' && (
                 <div>
@@ -766,6 +869,19 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
                   </select>
                 </div>
               )}
+              
+              <div style={{ marginTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>AI Cleanup Pause (Seconds)</label>
+                <input 
+                  type="number" 
+                  min="0"
+                  step="1"
+                  value={cleanupPause} 
+                  onChange={(e) => setCleanupPause(e.target.value)}
+                  style={{ width: '100%', padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                />
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>How long to pause between AI cleanup jobs to reduce CPU/GPU strain. Default is 0.</p>
+              </div>
               
               <button className="btn-primary" onClick={handleSaveAiModels} disabled={isSavingAiModels} style={{ alignSelf: 'flex-start' }}>
                 <Save size={16} /> {isSavingAiModels ? 'Saving...' : 'Save AI Settings'}

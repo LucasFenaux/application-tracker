@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { updateJobStage } from '@/app/actions';
-import { ExternalLink, Calendar as CalendarIcon } from 'lucide-react';
+import { updateJobStage, aiCleanupJob } from '@/app/actions';
+import { ExternalLink, Calendar as CalendarIcon, Wand2, Loader2, RefreshCw } from 'lucide-react';
 import DeleteJobButton from './DeleteJobButton';
 
 const STAGES = ['Queue', 'Applied', 'Interviewing', 'Offer', 'Rejected'];
@@ -11,10 +11,51 @@ export default function KanbanBoard({ initialJobs }: { initialJobs: any[] }) {
   const [jobs, setJobs] = useState(initialJobs);
   const [draggedJob, setDraggedJob] = useState<any>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [cleaningJobs, setCleaningJobs] = useState<Record<number, boolean>>({});
+  const [globalCleaningJobs, setGlobalCleaningJobs] = useState<Record<number, boolean>>({});
+  const [showingOriginals, setShowingOriginals] = useState<Record<number, boolean>>({});
+
+  const handleCleanup = async (e: React.MouseEvent, jobId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setCleaningJobs(prev => ({ ...prev, [jobId]: true }));
+    try {
+      const res = await aiCleanupJob(jobId);
+      if (!res.success) {
+        alert(res.error || 'Failed to clean up job');
+      } else {
+        setJobs(prev => prev.map(j => j.id === jobId ? { ...j, original_job_data: '{}' } : j));
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setCleaningJobs(prev => ({ ...prev, [jobId]: false }));
+    }
+  };
 
   useEffect(() => {
     setJobs(initialJobs);
   }, [initialJobs]);
+
+  useEffect(() => {
+    const fetchCleaning = async () => {
+      try {
+        const { getQueuedCleanups } = await import('@/app/actions');
+        const queued = await getQueuedCleanups();
+        const newGlobal: Record<number, boolean> = {};
+        queued.forEach(key => {
+          const [type, id] = key.split('-');
+          if (type === 'job') newGlobal[Number(id)] = true;
+        });
+        setGlobalCleaningJobs(newGlobal);
+      } catch (e) {}
+    };
+
+    fetchCleaning();
+    const interval = setInterval(fetchCleaning, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleDragStart = (e: React.DragEvent, job: any) => {
     setDraggedJob(job);
@@ -80,7 +121,19 @@ export default function KanbanBoard({ initialJobs }: { initialJobs: any[] }) {
             </div>
             
             <div className="kanban-cards">
-              {stageJobs.map(job => (
+              {stageJobs.map(job => {
+                const isOriginal = showingOriginals[job.id];
+                let originalData = null;
+                if (job.original_job_data) {
+                  try {
+                    originalData = JSON.parse(job.original_job_data);
+                  } catch (e) {}
+                }
+                const displayTitle = isOriginal && originalData ? originalData.title : job.title;
+                const displayCompany = isOriginal && originalData ? originalData.company : job.company;
+                const displayLocation = isOriginal && originalData ? originalData.location : job.location;
+
+                return (
                 <div 
                   key={job.id} 
                   className="kanban-card"
@@ -88,13 +141,18 @@ export default function KanbanBoard({ initialJobs }: { initialJobs: any[] }) {
                   onDragStart={(e) => handleDragStart(e, job)}
                   onDragEnd={handleDragEnd}
                 >
-                  <div className="card-title">
+                  <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <a href={`/board/${job.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      {job.title}
+                      {displayTitle}
                     </a>
+                    {job.deletion_suggested === 1 && (
+                      <span style={{ fontSize: '0.7rem', background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.3)', whiteSpace: 'nowrap', marginLeft: '8px' }} title="AI flagged this as an invalid job post. See AI Cleanup tab to keep or delete.">
+                        Deletion Suggested
+                      </span>
+                    )}
                   </div>
-                  <div className="card-company">{job.company}</div>
-                  <div className="card-location" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{job.location || 'Remote/Unknown'}</div>
+                  <div className="card-company">{displayCompany}</div>
+                  <div className="card-location" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{displayLocation || 'Remote/Unknown'}</div>
                   
                   {job.matchScore != null && (
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
@@ -149,11 +207,43 @@ export default function KanbanBoard({ initialJobs }: { initialJobs: any[] }) {
                       )}
                     </div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      {job.original_job_data ? (
+                        <div style={{ display: 'flex', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '6px', overflow: 'hidden', background: 'rgba(168, 85, 247, 0.05)' }}>
+                          <button 
+                            className="btn-secondary" 
+                            style={{ border: 'none', borderRight: '1px solid rgba(168, 85, 247, 0.3)', padding: '4px 8px', fontSize: '0.75rem', background: showingOriginals[job.id] ? 'rgba(168, 85, 247, 0.2)' : 'transparent', color: '#c084fc', borderRadius: 0, margin: 0 }}
+                            onClick={(e) => { e.stopPropagation(); setShowingOriginals(prev => ({ ...prev, [job.id]: !prev[job.id] })); }}
+                            title="Toggle Original/Cleaned"
+                          >
+                            {showingOriginals[job.id] ? 'Original' : 'Cleaned'}
+                          </button>
+                          <button 
+                            className="btn-secondary" 
+                            style={{ border: 'none', padding: '4px 6px', color: '#c084fc', background: 'transparent', borderRadius: 0, margin: 0 }}
+                            onClick={(e) => handleCleanup(e, job.id)}
+                            disabled={cleaningJobs[job.id] || globalCleaningJobs[job.id]}
+                            title="Re-run AI Cleanup"
+                          >
+                            {(cleaningJobs[job.id] || globalCleaningJobs[job.id]) ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          className="btn-secondary" 
+                          style={{ padding: '4px', color: 'var(--accent-color)' }}
+                          onClick={(e) => handleCleanup(e, job.id)}
+                          disabled={cleaningJobs[job.id] || globalCleaningJobs[job.id]}
+                          title="Clean up with AI"
+                        >
+                          {(cleaningJobs[job.id] || globalCleaningJobs[job.id]) ? <Loader2 size={16} className="spin" /> : <Wand2 size={16} />}
+                        </button>
+                      )}
                       <DeleteJobButton id={job.id} />
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );

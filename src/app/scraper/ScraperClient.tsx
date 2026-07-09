@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { startScraper, startSequentialScraper, cancelScraper, deleteScrapedJob, hideScrapedJob, unhideScrapedJob, hardDeleteScrapedJob, moveToMainBoard, saveFocusToSettings, getScraperStatus, getScrapedJobs, getScraperLogs, updateSetting } from '@/app/actions';
-import { Search, Globe, Filter, Play, CheckCircle2, Trash2, EyeOff, Eye, ArrowRight } from 'lucide-react';
+import { startScraper, startSequentialScraper, startDeepSequentialScraper, cancelScraper, deleteScrapedJob, hideScrapedJob, unhideScrapedJob, hardDeleteScrapedJob, moveToMainBoard, saveFocusToSettings, getScraperStatus, getScrapedJobs, getScraperLogs, updateSetting, aiCleanupJob } from '@/app/actions';
+import { Search, Globe, Filter, Play, CheckCircle2, Trash2, EyeOff, Eye, ArrowRight, Wand2, Loader2, RefreshCw, Cpu } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function ScraperClient({ initialJobs, initialLogs, settings }: { initialJobs: any[], initialLogs: any[], settings: any }) {
@@ -29,6 +29,9 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
   const [progress, setProgress] = useState(0);
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
   const [showHiddenJobs, setShowHiddenJobs] = useState(false);
+  const [cleaningJobs, setCleaningJobs] = useState<Record<number, boolean>>({});
+  const [globalCleaningJobs, setGlobalCleaningJobs] = useState<Record<number, boolean>>({});
+  const [showingOriginals, setShowingOriginals] = useState<Record<number, boolean>>({});
 
   let DEFAULT_SITES = [
     { name: 'YCombinator', url: 'https://news.ycombinator.com/jobs' },
@@ -96,19 +99,36 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
       const stat = await getScraperStatus();
       
       setIsRunning(stat.isRunning);
-      setLiveStatus(stat.status);
-      setProgress(stat.progress);
-
       if (stat.isRunning) {
-        const updatedJobs = await getScrapedJobs();
-        const updatedLogs = await getScraperLogs();
-        setJobs(updatedJobs);
-        setLogs(updatedLogs);
+        setLiveStatus(stat.status);
+        setProgress(stat.progress);
+        // Refresh jobs and logs while running
+        const j = await getScrapedJobs();
+        const l = await getScraperLogs();
+        setJobs(j);
+        setLogs(l);
       }
     };
 
-    pollStatus(); // Initial fetch
-    const interval = setInterval(pollStatus, 2000);
+    const fetchCleaning = async () => {
+      try {
+        const { getQueuedCleanups } = await import('@/app/actions');
+        const queued = await getQueuedCleanups();
+        const newGlobal: Record<number, boolean> = {};
+        queued.forEach(key => {
+          const [type, id] = key.split('-');
+          if (type === 'scraped') newGlobal[Number(id)] = true;
+        });
+        setGlobalCleaningJobs(newGlobal);
+      } catch (e) {}
+    };
+
+    pollStatus();
+    fetchCleaning();
+    const interval = setInterval(() => {
+      pollStatus();
+      fetchCleaning();
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -119,7 +139,8 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
     }
     setIsRunning(true);
     await saveFocusToSettings(focus);
-    await startScraper(url, website, focus, minMatch, minGoalMatch);
+    const aiProvider = settings['ai_provider'] || 'builtin';
+    await startScraper(url, website, focus, minMatch, minGoalMatch, aiProvider);
     alert('Scraper started in background! Check logs shortly.');
   };
 
@@ -127,7 +148,15 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
     setIsRunning(true);
     await saveFocusToSettings(focus);
     alert('Starting sequential scraper for default sites in the background!');
-    await startSequentialScraper(DEFAULT_SITES, focus, minMatch, minGoalMatch);
+    const aiProvider = settings['ai_provider'] || 'builtin';
+    await startSequentialScraper(DEFAULT_SITES, focus, minMatch, minGoalMatch, aiProvider);
+  };
+
+  const handleDeepScrapeDefaults = async () => {
+    setIsRunning(true);
+    await saveFocusToSettings(focus);
+    alert('Starting DEEP AGENTIC scraper for default sites in the background (using Ollama)! This will be slow.');
+    await startDeepSequentialScraper(DEFAULT_SITES, focus, minMatch, minGoalMatch, 'ollama');
   };
 
   const handleMove = async (id: number) => {
@@ -148,6 +177,23 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
   const handleHardDelete = async (id: number) => {
     await hardDeleteScrapedJob(id); // This is permanent delete
     router.refresh();
+  };
+
+  const handleCleanup = async (id: number) => {
+    setCleaningJobs(prev => ({ ...prev, [id]: true }));
+    try {
+      const res = await aiCleanupJob(id, 'scraped');
+      if (!res.success) {
+        alert(res.error || 'Failed to clean up job');
+      } else {
+        setJobs(prev => prev.map(j => j.id === id ? { ...j, original_job_data: '{}' } : j));
+        router.refresh();
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setCleaningJobs(prev => ({ ...prev, [id]: false }));
+    }
   };
 
   return (
@@ -264,12 +310,20 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>Requires a "Target Job Goal" to be set in Settings.</span>
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <button className="btn-primary" onClick={handleStart} disabled={isRunning} style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                <button className="btn-primary" onClick={handleStart} disabled={isRunning} style={{ flex: '1 1 45%' }}>
                   <Search size={18} /> {isRunning ? 'Starting...' : 'Start Custom Scraper'}
                 </button>
-                <button className="btn-secondary" onClick={handleScrapeDefaults} disabled={isRunning} style={{ flex: 1 }}>
+                <button className="btn-secondary" onClick={handleScrapeDefaults} disabled={isRunning} style={{ flex: '1 1 45%' }}>
                   <Globe size={18} /> {isRunning ? 'Starting...' : 'Scrape All Defaults'}
+                </button>
+                <button 
+                  onClick={handleDeepScrapeDefaults} 
+                  disabled={isRunning} 
+                  style={{ flex: '1 1 100%', padding: '0.75rem', background: 'rgba(139, 92, 246, 0.2)', border: '1px solid #8b5cf6', color: '#8b5cf6', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600 }}
+                  title="Uses Ollama to autonomously click and navigate through the websites."
+                >
+                  <Cpu size={18} /> {isRunning ? 'Starting...' : 'Deep Scrape Defaults (Agentic)'}
                 </button>
               </div>
               
@@ -318,13 +372,25 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
             ) : (
               filteredJobs.map((job) => {
                 const isExpanded = expandedJobId === job.id;
+                const isOriginal = showingOriginals[job.id];
+                let originalData = null;
+                if (job.original_job_data) {
+                  try {
+                    originalData = JSON.parse(job.original_job_data);
+                  } catch (e) {}
+                }
+                const displayTitle = isOriginal && originalData ? originalData.title : job.title;
+                const displayCompany = isOriginal && originalData ? originalData.company : job.company;
+                const displayLocation = isOriginal && originalData ? originalData.location : job.location;
+                const displayDescription = isOriginal && originalData ? originalData.description : job.description;
+
                 return (
                   <div key={job.id} className="glass-panel" style={{ padding: '1.5rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setExpandedJobId(isExpanded ? null : job.id)}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                       <div>
-                        <h3 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '4px', color: job.is_hidden ? 'var(--text-secondary)' : 'var(--accent-color)', textDecoration: job.is_hidden ? 'line-through' : 'none' }}>{job.title}</h3>
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '4px', color: job.is_hidden ? 'var(--text-secondary)' : 'var(--accent-color)', textDecoration: job.is_hidden ? 'line-through' : 'none' }}>{displayTitle}</h3>
                         <div style={{ color: 'var(--text-secondary)' }}>
-                          {job.company} {job.location && `• ${job.location}`} 
+                          {displayCompany} {displayLocation && `• ${displayLocation}`} 
                           {job.is_hidden ? <span style={{ marginLeft: '8px', fontSize: '0.8rem', padding: '2px 6px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px' }}>Hidden</span> : null}
                         </div>
                       </div>
@@ -357,6 +423,11 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
                             {job.goal_match_score}% Goal Match
                           </span>
                         )}
+                        {job.deletion_suggested === 1 && (
+                          <span className="kanban-badge" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)' }} title="AI flagged this as an invalid job post. See AI Cleanup tab to keep or delete.">
+                            Deletion Suggested
+                          </span>
+                        )}
                       </div>
                     </div>
                     
@@ -372,7 +443,7 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
                       WebkitBoxOrient: 'vertical',
                       whiteSpace: 'pre-wrap'
                     }}>
-                      {job.description}
+                      {displayDescription}
                       {isExpanded && job.notes && (
                         <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', borderLeft: '3px solid var(--accent-color)' }}>
                           <strong style={{ display: 'block', color: 'var(--text-primary)', marginBottom: '8px' }}>AI Match Reasoning:</strong>
@@ -386,7 +457,38 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+                      {job.original_job_data ? (
+                        <div style={{ display: 'flex', border: '1px solid rgba(168, 85, 247, 0.2)', borderRadius: '6px', overflow: 'hidden', background: 'rgba(168, 85, 247, 0.05)' }}>
+                          <button 
+                            className="btn-secondary" 
+                            onClick={(e) => { e.stopPropagation(); setShowingOriginals(prev => ({ ...prev, [job.id]: !prev[job.id] })); }}
+                            style={{ border: 'none', borderRight: '1px solid rgba(168, 85, 247, 0.2)', background: showingOriginals[job.id] ? 'rgba(168, 85, 247, 0.2)' : 'transparent', color: '#c084fc', margin: 0, borderRadius: 0 }}
+                            title="Toggle Clean/Original View"
+                          >
+                            {showingOriginals[job.id] ? 'Original View' : 'Cleaned View'}
+                          </button>
+                          <button 
+                            className="btn-secondary" 
+                            onClick={(e) => { e.stopPropagation(); handleCleanup(job.id); }}
+                            disabled={cleaningJobs[job.id] || globalCleaningJobs[job.id]}
+                            style={{ border: 'none', background: 'transparent', color: '#c084fc', margin: 0, borderRadius: 0 }}
+                            title="Re-run AI Cleanup"
+                          >
+                            {(cleaningJobs[job.id] || globalCleaningJobs[job.id]) ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Re-run
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          className="btn-secondary" 
+                          onClick={(e) => { e.stopPropagation(); handleCleanup(job.id); }}
+                          disabled={cleaningJobs[job.id] || globalCleaningJobs[job.id]}
+                          style={{ color: '#c084fc' }}
+                          title="Clean up with AI"
+                        >
+                          {(cleaningJobs[job.id] || globalCleaningJobs[job.id]) ? <Loader2 size={16} className="spin" /> : <Wand2 size={16} />} AI Clean
+                        </button>
+                      )}
                       {job.is_hidden ? (
                         <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); handleUnhide(job.id); }} style={{ color: 'var(--text-primary)' }} title="Unhide this job">
                           <Eye size={16} /> Unhide

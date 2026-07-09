@@ -563,10 +563,10 @@ export async function getScraperStatus() {
   
   let running = isRunning ? isRunning.value === 'true' : false;
 
-  // Watchdog / Dead-man switch: If the scraper is marked as running but hasn't updated its heartbeat in 60s, it crashed.
+  // Watchdog / Dead-man switch: If the scraper is marked as running but hasn't updated its heartbeat in 5 minutes, it crashed.
   if (running && heartbeat && heartbeat.value) {
     const lastSeen = parseInt(heartbeat.value);
-    if (Date.now() - lastSeen > 60000) {
+    if (Date.now() - lastSeen > 300000) {
       console.log("[Scraper] Watchdog detected dead scraper. Resetting status.");
       db.prepare("UPDATE settings SET value = 'false' WHERE key = 'scraper_is_running'").run();
       running = false;
@@ -855,6 +855,39 @@ export async function startSequentialScraper(sites: any[], focus: string, minMat
   return { success: true };
 }
 
+export async function startDeepSequentialScraper(sites: any[], focus: string, minMatch: number, minGoalMatch: number, provider: 'ollama'|'builtin' = 'ollama') {
+  const db = getDb();
+  db.prepare("INSERT INTO settings (key, value) VALUES ('scraper_cancel_requested', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'").run();
+  db.prepare("INSERT INTO settings (key, value) VALUES ('scraper_is_running', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run();
+  
+  import('@/lib/scraper').then(async scraper => {
+    try {
+      for (const site of sites) {
+        const cancelFlag = getDb().prepare("SELECT value FROM settings WHERE key = 'scraper_cancel_requested'").get() as any;
+        if (cancelFlag && cancelFlag.value === 'true') {
+          console.log("[DeepScrape] Run cancelled by user");
+          break; 
+        }
+
+        try {
+          await scraper.runDeepScrapeTask(site.url, site.name, focus, minMatch, minGoalMatch, provider);
+        } catch (err) {
+          console.error(`[DeepScrape] Error on ${site.name}:`, err);
+        }
+      }
+      
+      console.log("[DeepScrape] Finished deep scrape of all sites.");
+      getDb().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scraper_live_status', 'Deep Scrape Finished.');
+      getDb().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scraper_progress', '100');
+    } catch (e) {
+      console.error("[DeepScrape] died:", e);
+    } finally {
+      getDb().prepare("UPDATE settings SET value = 'false' WHERE key = 'scraper_is_running'").run();
+    }
+  });
+  return { success: true };
+}
+
 export async function cancelScraper() {
   const db = getDb();
   db.prepare("INSERT INTO settings (key, value) VALUES ('scraper_cancel_requested', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run();
@@ -1057,3 +1090,316 @@ export async function emptyExtensionBin() {
   const db = getDb();
   db.prepare('DELETE FROM extension_jobs WHERE deleted_at IS NOT NULL').run();
 }
+
+// ---- AI Cleanup Actions ----
+
+let globalCleanupQueue: Promise<any> = Promise.resolve();
+
+const queuedCleanups = new Set<string>();
+
+export async function getQueuedCleanups() {
+  return Array.from(queuedCleanups);
+}
+
+let globalBatchTotal = 0;
+
+export async function aiCleanupJob(id: number, type: 'job' | 'scraped' | 'extension' = 'job'): Promise<{success: boolean, error?: string}> {
+  const key = `${type}-${id}`;
+  if (queuedCleanups.has(key)) return { success: false, error: 'Already queued' };
+  
+  queuedCleanups.add(key);
+
+  return new Promise((resolve) => {
+    globalCleanupQueue = globalCleanupQueue.then(async () => {
+      // If the queue was emptied, skip this job.
+      if (!queuedCleanups.has(key)) {
+        resolve({ success: false, error: 'Cancelled' });
+        return;
+      }
+      try {
+        const result = await doAiCleanupJob(id, type);
+        queuedCleanups.delete(key);
+        resolve(result);
+      } catch (err: any) {
+        console.error('AI Cleanup Queue Error:', err);
+        queuedCleanups.delete(key);
+        resolve({ success: false, error: err.message || 'Unknown error in queue' });
+      } finally {
+        // Enforce pause between AI calls if configured
+        try {
+          const pauseSetting = getDb().prepare("SELECT value FROM settings WHERE key = 'cleanup_pause_seconds'").get() as any;
+          const pauseSeconds = pauseSetting ? parseInt(pauseSetting.value) : 0;
+          if (pauseSeconds > 0) {
+            await new Promise(r => setTimeout(r, pauseSeconds * 1000));
+          }
+        } catch (e) {}
+      }
+    });
+  });
+}
+
+async function doAiCleanupJob(id: number, type: 'job' | 'scraped' | 'extension' = 'job') {
+  const db = getDb();
+  let table = 'jobs';
+  if (type === 'scraped') table = 'scraped_jobs';
+  if (type === 'extension') table = 'extension_jobs';
+
+  const job = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id) as any;
+  if (!job) return { success: false, error: 'Job not found' };
+
+  // If original_job_data is not set, set it now.
+  if (!job.original_job_data) {
+    const originalData = JSON.stringify({
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      description: job.description
+    });
+    db.prepare(`UPDATE ${table} SET original_job_data = ? WHERE id = ?`).run(originalData, id);
+  }
+
+  const prompt = `You are an AI data cleaner. Your task is to clean up a job posting scraped from the web.
+The current job data may have mis-parsed fields or contain unrelated website text (like button names, menu items, or cookie banners) in the description.
+Fix any obvious parsing errors in the fields.
+For the description, carefully remove text that is clearly unrelated to the actual job posting, but be conservative—do NOT remove potentially useful information.
+Try as little as possible not to paraphrase the original text. Simple removal and edits only.
+
+CRITICAL INSTRUCTION: If you determine that the provided text is genuinely NOT a job posting at all (for example, it is just a cookie banner, a generic list of links, an error page, or a completely empty/invalid scrap), you should set "isNotJob": true. Otherwise, set it to false.
+If the job posting is already in good shape, properly formatted, and doesn't contain any unrelated website artifacts, just output the current title, company, location, and description exactly as they are without modifying them, and set "isNotJob": false.
+
+Current Job Data:
+Title: ${job.title}
+Company: ${job.company}
+Location: ${job.location || ''}
+Description:
+${job.description || ''}
+
+Output your response as a pure JSON object with the keys "title", "company", "location", "description", and "isNotJob".
+Do not include markdown blocks, explanations, or any other text outside the JSON.`;
+
+  const providerSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_provider') as any;
+  const provider = providerSetting ? providerSetting.value : 'ollama';
+
+  const { generateTextBuiltin, generateTextOllama } = await import('@/lib/ml');
+
+  let responseText = '';
+  try {
+    if (provider === 'ollama') {
+      responseText = await generateTextOllama(prompt);
+      // Remove thinking blocks
+      responseText = responseText.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+    } else {
+      responseText = await generateTextBuiltin(prompt);
+    }
+
+    // Try to extract JSON if wrapped in markdown or other text
+    let jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Could not find JSON in response');
+    }
+
+    const cleanedData = JSON.parse(jsonMatch[0]);
+
+    const cleanedTitle = (cleanedData.title || job.title || 'Unknown Title').toString().trim();
+    const cleanedCompany = (cleanedData.company || job.company || 'Unknown Company').toString().trim();
+    const cleanedLocation = (cleanedData.location || job.location || '').toString().trim();
+    const cleanedDescription = (cleanedData.description || job.description || '').toString().trim();
+    const isNotJob = !!cleanedData.isNotJob;
+
+    if (type === 'job') {
+      db.prepare(`UPDATE ${table} SET title = ?, company = ?, location = ?, description = ?, deletion_suggested = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(cleanedTitle, cleanedCompany, cleanedLocation, cleanedDescription, isNotJob ? 1 : 0, id);
+    } else {
+      db.prepare(`UPDATE ${table} SET title = ?, company = ?, location = ?, description = ?, deletion_suggested = ? WHERE id = ?`)
+        .run(cleanedTitle, cleanedCompany, cleanedLocation, cleanedDescription, isNotJob ? 1 : 0, id);
+    }
+    
+    if (!isNotJob && cleanedTitle && cleanedCompany) {
+      await recalculateMatchScoreForJob(table, id, `${cleanedTitle}\n${cleanedTitle}\n${cleanedTitle}\n${cleanedTitle} - ${cleanedCompany}\n\n${cleanedDescription}`);
+    }
+
+    revalidatePath('/');
+    revalidatePath('/board');
+    revalidatePath('/settings');
+    revalidatePath('/scraper');
+    revalidatePath('/extension');
+    return { success: true };
+  } catch (err: any) {
+    console.error('AI Cleanup Error:', err);
+    return { success: false, error: err.message || 'Failed to parse or generate clean data' };
+  }
+}
+
+
+export async function getCleanupStatus() {
+  const db = getDb();
+  const totalCountJobs = db.prepare('SELECT COUNT(*) as count FROM jobs WHERE deleted_at IS NULL').get() as any;
+  const uncleanedCountJobs = db.prepare('SELECT COUNT(*) as count FROM jobs WHERE original_job_data IS NULL AND deleted_at IS NULL').get() as any;
+  
+  const totalCountScraped = db.prepare('SELECT COUNT(*) as count FROM scraped_jobs WHERE deleted_at IS NULL').get() as any;
+  const uncleanedCountScraped = db.prepare('SELECT COUNT(*) as count FROM scraped_jobs WHERE original_job_data IS NULL AND deleted_at IS NULL').get() as any;
+  
+  const totalCountExt = db.prepare('SELECT COUNT(*) as count FROM extension_jobs WHERE deleted_at IS NULL').get() as any;
+  const uncleanedCountExt = db.prepare('SELECT COUNT(*) as count FROM extension_jobs WHERE original_job_data IS NULL AND deleted_at IS NULL').get() as any;
+
+  const totalCount = totalCountJobs.count + totalCountScraped.count + totalCountExt.count;
+  const uncleanedCount = uncleanedCountJobs.count + uncleanedCountScraped.count + uncleanedCountExt.count;
+  
+  const queuedCount = queuedCleanups.size;
+  const running = queuedCount > 0;
+  
+  if (!running) {
+     globalBatchTotal = 0;
+  } else if (queuedCount > globalBatchTotal) {
+     globalBatchTotal = queuedCount;
+  }
+
+  return {
+    uncleanedCount: uncleanedCount,
+    cleanedCount: totalCount - uncleanedCount,
+    totalJobs: totalCount,
+    isRunning: running,
+    progress: globalBatchTotal - queuedCount,
+    batchTotal: globalBatchTotal,
+    status: running ? `Cleaning ${globalBatchTotal - queuedCount + 1} of ${globalBatchTotal}...` : 'Idle'
+  };
+}
+
+export async function startBulkCleanup() {
+  const db = getDb();
+  
+  if (queuedCleanups.size > 0) {
+    return { success: false, error: 'Cleanup is already running' };
+  }
+
+  const jobs = db.prepare("SELECT id, 'job' as type FROM jobs WHERE original_job_data IS NULL AND deleted_at IS NULL").all() as any[];
+  const scraped = db.prepare("SELECT id, 'scraped' as type FROM scraped_jobs WHERE original_job_data IS NULL AND deleted_at IS NULL").all() as any[];
+  const extension = db.prepare("SELECT id, 'extension' as type FROM extension_jobs WHERE original_job_data IS NULL AND deleted_at IS NULL").all() as any[];
+  
+  const allJobsToClean = [...jobs, ...scraped, ...extension];
+  
+  if (allJobsToClean.length === 0) {
+    return { success: true, message: 'No jobs to clean' };
+  }
+  
+  globalBatchTotal = allJobsToClean.length;
+
+  // Queue them all without awaiting
+  for (let item of allJobsToClean) {
+    aiCleanupJob(item.id, item.type as any);
+  }
+
+  return { success: true };
+}
+
+export async function stopBulkCleanup() {
+  queuedCleanups.clear();
+  globalBatchTotal = 0;
+  return { success: true };
+}
+
+// ---- Deletion Suggestions Actions ----
+
+export async function getDeletionSuggestions() {
+  const db = getDb();
+  
+  const jobs = db.prepare(`SELECT id, title, company, location, description, 'job' as type FROM jobs WHERE deletion_suggested = 1 AND deleted_at IS NULL`).all() as any[];
+  const scraped = db.prepare(`SELECT id, title, company, location, description, 'scraped' as type FROM scraped_jobs WHERE deletion_suggested = 1 AND deleted_at IS NULL`).all() as any[];
+  const extension = db.prepare(`SELECT id, title, company, location, description, 'extension' as type FROM extension_jobs WHERE deletion_suggested = 1 AND deleted_at IS NULL`).all() as any[];
+  
+  return [...jobs, ...scraped, ...extension];
+}
+
+export async function voteKeepJob(id: number, type: 'job' | 'scraped' | 'extension') {
+  const db = getDb();
+  let table = 'jobs';
+  if (type === 'scraped') table = 'scraped_jobs';
+  if (type === 'extension') table = 'extension_jobs';
+  
+  db.prepare(`UPDATE ${table} SET deletion_suggested = 0 WHERE id = ?`).run(id);
+  
+  if (type === 'job') {
+    db.prepare(`UPDATE activities SET action = 'Removed Deletion Suggestion', date = ? WHERE job_id = ?`)
+      .run(new Date().toISOString(), id);
+  }
+  
+  revalidatePath('/ai-cleanup');
+  revalidatePath('/');
+  return { success: true };
+}
+
+export async function voteDeleteJob(id: number, type: 'job' | 'scraped' | 'extension') {
+  const db = getDb();
+  let table = 'jobs';
+  if (type === 'scraped') table = 'scraped_jobs';
+  if (type === 'extension') table = 'extension_jobs';
+  
+  db.prepare(`UPDATE ${table} SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
+  
+  if (type === 'job') {
+    db.prepare(`INSERT INTO activities (date, action, job_id) VALUES (?, ?, ?)`).run(new Date().toISOString(), 'Moved to Bin (AI Deletion Suggested)', id);
+  }
+  
+  revalidatePath('/ai-cleanup');
+  revalidatePath('/');
+  return { success: true };
+}
+
+export async function recalculateMatchScoreForJob(table: string, id: number, text: string) {
+  try {
+    const { generateEmbedding, cosineSimilarity, calculateMatchScore } = await import('@/lib/ml');
+    const db = getDb();
+    
+    const newVector = await generateEmbedding(text);
+    const newVectorStr = JSON.stringify(newVector);
+    
+    if (table === 'jobs') {
+      db.prepare(`UPDATE jobs SET vector = ? WHERE id = ?`).run(newVectorStr, id);
+      return;
+    }
+
+    const profiles = db.prepare('SELECT vector FROM materials WHERE is_profile = 1').all() as any[];
+    let combinedProfileVector: number[] | null = null;
+    if (profiles.length > 0) {
+      const parsedProfiles = profiles.map(p => p.vector ? JSON.parse(p.vector) : null).filter(v => v !== null);
+      if (parsedProfiles.length > 0) {
+        const dim = parsedProfiles[0].length;
+        combinedProfileVector = new Array(dim).fill(0);
+        for (const vec of parsedProfiles) {
+          for (let i = 0; i < dim; i++) combinedProfileVector[i] += vec[i];
+        }
+        for (let i = 0; i < dim; i++) combinedProfileVector[i] /= parsedProfiles.length;
+      }
+    }
+    
+    const settings = db.prepare('SELECT key, value FROM settings').all() as any[];
+    const settingsMap = settings.reduce((acc, row) => ({ ...acc, [(row as any).key]: (row as any).value }), {});
+    const calibrationMode = settingsMap['calibration_mode'] || 'simple';
+    const minSim = parseFloat(settingsMap['calibration_min'] || '0.55');
+    const maxSim = parseFloat(settingsMap['calibration_max'] || '0.85');
+    const calibrationCurve = JSON.parse(settingsMap['calibration_curve'] || '[]');
+    
+    let targetJobGoalVector: number[] | null = null;
+    if (settingsMap['target_job_goal_vector']) {
+      try { targetJobGoalVector = JSON.parse(settingsMap['target_job_goal_vector']); } catch (err) {}
+    }
+
+    let matchScore = 100;
+    let goalMatchScore = 100;
+    if (combinedProfileVector) {
+      const similarity = cosineSimilarity(combinedProfileVector, newVector);
+      matchScore = calculateMatchScore(similarity, calibrationMode, calibrationCurve, minSim, maxSim);
+    }
+    if (targetJobGoalVector) {
+      const goalSimilarity = cosineSimilarity(targetJobGoalVector, newVector);
+      goalMatchScore = calculateMatchScore(goalSimilarity, calibrationMode, calibrationCurve, minSim, maxSim);
+    }
+    
+    db.prepare(`UPDATE ${table} SET vector = ?, match_score = ?, goal_match_score = ? WHERE id = ?`)
+      .run(newVectorStr, matchScore, goalMatchScore, id);
+      
+  } catch (err) {
+    console.error("Failed to recalculate score:", err);
+  }
+}
+

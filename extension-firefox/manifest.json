@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AppTracker Job Saver",
-  "version": "1.21",
+  "version": "1.25",
   "description": "Save jobs to your Application Tracker directly from any job board.",
   "permissions": [
     "activeTab",
@@ -22,12 +22,13 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "css": ["modal.css"]
     }
   ],
   "browser_specific_settings": {
     "gecko": {
-      "id": "apptracker@lucasfenaux.com"
+      "id": "apptracker@localhost.com"
     }
   }
 }

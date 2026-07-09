@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { updateJobNotes, attachMaterialToJob, generateResumeSuggestions, removeMaterialFromJob, updateJobDetails, updateJobDeadline, updateJobStage } from '@/app/actions';
-import { Save, Paperclip, ExternalLink, ArrowLeft, DownloadCloud, Wand2, AlertTriangle, Edit2, X, Trash2, CalendarIcon, Clock, ChevronDown } from 'lucide-react';
+import { updateJobNotes, attachMaterialToJob, generateResumeSuggestions, removeMaterialFromJob, updateJobDetails, updateJobDeadline, updateJobStage, aiCleanupJob } from '@/app/actions';
+import { Save, Paperclip, ExternalLink, ArrowLeft, DownloadCloud, Wand2, AlertTriangle, Edit2, X, Trash2, CalendarIcon, Clock, ChevronDown, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import DeleteJobButton from '@/components/DeleteJobButton';
@@ -21,6 +21,47 @@ export default function JobDetailsClient({ job, jobMaterials, allMaterials, aiOl
   const [editLocation, setEditLocation] = useState(job.location || '');
   const [editDescription, setEditDescription] = useState(job.description || '');
   const [isSavingJob, setIsSavingJob] = useState(false);
+
+  // Cleanup State
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [globalCleaningJobs, setGlobalCleaningJobs] = useState<Record<number, boolean>>({});
+
+  React.useEffect(() => {
+    const fetchCleaning = async () => {
+      try {
+        const { getQueuedCleanups } = await import('@/app/actions');
+        const queued = await getQueuedCleanups();
+        const newGlobal: Record<number, boolean> = {};
+        queued.forEach(key => {
+          const [type, id] = key.split('-');
+          if (type === 'job') newGlobal[Number(id)] = true;
+        });
+        setGlobalCleaningJobs(newGlobal);
+      } catch (e) {}
+    };
+
+    fetchCleaning();
+    const interval = setInterval(fetchCleaning, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const originalData = job.original_job_data ? JSON.parse(job.original_job_data) : null;
+  const displayTitle = showOriginal && originalData ? originalData.title : job.title;
+  const displayCompany = showOriginal && originalData ? originalData.company : job.company;
+  const displayLocation = showOriginal && originalData ? originalData.location : job.location;
+  const displayDescription = showOriginal && originalData ? originalData.description : job.description;
+
+  const handleCleanup = async () => {
+    setIsCleaningUp(true);
+    const res = await aiCleanupJob(job.id);
+    if (!res.success) {
+      alert(res.error || 'Failed to clean up job posting.');
+    } else {
+      setShowOriginal(false);
+    }
+    setIsCleaningUp(false);
+  };
 
   // Deadline State
   const [deadline, setDeadline] = useState(job.deadline || '');
@@ -167,17 +208,50 @@ export default function JobDetailsClient({ job, jobMaterials, allMaterials, aiOl
           <>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <h1 className="page-title">{job.title}</h1>
+                <h1 className="page-title">{displayTitle}</h1>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button className="btn-secondary" style={{ padding: '6px' }} onClick={() => setIsEditingJob(true)} title="Edit Job">
-                    <Edit2 size={14} />
-                  </button>
+                  {!showOriginal && (
+                    <button className="btn-secondary" style={{ padding: '6px' }} onClick={() => setIsEditingJob(true)} title="Edit Job">
+                      <Edit2 size={14} />
+                    </button>
+                  )}
+                  {job.original_job_data ? (
+                    <div style={{ display: 'flex', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '6px', overflow: 'hidden', background: 'rgba(168, 85, 247, 0.05)' }}>
+                      <button 
+                        className="btn-secondary" 
+                        onClick={() => setShowOriginal(!showOriginal)} 
+                        style={{ border: 'none', borderRight: '1px solid rgba(168, 85, 247, 0.3)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', background: showOriginal ? 'rgba(168, 85, 247, 0.2)' : 'transparent', color: 'var(--accent-color)', margin: 0, borderRadius: 0 }}
+                        title="Toggle Clean/Original View"
+                      >
+                        <Wand2 size={14} /> {showOriginal ? 'Showing Original' : 'Showing Cleaned'}
+                      </button>
+                      <button 
+                        className="btn-secondary" 
+                        style={{ border: 'none', padding: '6px', color: 'var(--accent-color)', background: 'transparent', margin: 0, borderRadius: 0 }} 
+                        onClick={handleCleanup} 
+                        disabled={isCleaningUp || globalCleaningJobs[job.id]}
+                        title="Re-run Cleanup"
+                      >
+                        {(isCleaningUp || globalCleaningJobs[job.id]) ? '...' : <RefreshCw size={14} />}
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      className="btn-secondary" 
+                      style={{ padding: '6px', color: 'var(--accent-color)' }} 
+                      onClick={handleCleanup} 
+                      disabled={isCleaningUp || globalCleaningJobs[job.id]}
+                      title="Clean up with AI"
+                    >
+                      {(isCleaningUp || globalCleaningJobs[job.id]) ? '...' : <Wand2 size={14} />}
+                    </button>
+                  )}
                   <DeleteJobButton id={job.id} onSuccess={() => router.push('/board')} />
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{job.company}</p>
-                <p style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>{job.location || 'Remote/Unknown'}</p>
+                <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{displayCompany}</p>
+                <p style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>{displayLocation || 'Remote/Unknown'}</p>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -235,7 +309,7 @@ export default function JobDetailsClient({ job, jobMaterials, allMaterials, aiOl
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {(job.description || isEditingJob) && (
+          {(displayDescription || isEditingJob) && (
             <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem' }}>Job Description</h2>
               {isEditingJob ? (
@@ -247,7 +321,7 @@ export default function JobDetailsClient({ job, jobMaterials, allMaterials, aiOl
                 />
               ) : (
                 <div style={{ whiteSpace: 'pre-wrap', color: 'var(--text-secondary)', fontSize: '0.95rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '10px' }}>
-                  {job.description}
+                  {displayDescription}
                 </div>
               )}
             </div>

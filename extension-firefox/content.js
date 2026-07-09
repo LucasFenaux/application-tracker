@@ -1,5 +1,5 @@
 // Default whitelist of allowed websites
-let whitelist = ['linkedin.com', 'indeed.com', 'ycombinator.com', 'builtin.com'];
+let whitelist = ['linkedin.com', 'indeed.com', 'ycombinator.com', 'builtin.com', 'greenhouse.io', 'lever.co', 'ashbyhq.com'];
 
 let teachModeActive = false;
 let currentHoverEl = null;
@@ -11,6 +11,13 @@ chrome.storage.local.get(['whitelist'], (result) => {
   init();
 });
 
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local' && changes.whitelist) {
+    whitelist = changes.whitelist.newValue;
+    init();
+  }
+});
+
 function isWhitelisted() {
   const hostname = window.location.hostname;
   return whitelist.some(domain => hostname.includes(domain));
@@ -18,123 +25,13 @@ function isWhitelisted() {
 
 function init() {
   if (!isWhitelisted()) return;
-
-  // Add CSS for hover effects and buttons
-  const style = document.createElement('style');
-  style.innerHTML = `
-    .apptracker-job-card-hover {
-      outline: 2px solid #2563eb !important;
-      outline-offset: -2px;
-      position: relative;
-    }
-    .apptracker-teach-hover {
-      outline: 2px dashed #dc2626 !important;
-      outline-offset: -2px;
-      cursor: crosshair !important;
-    }
-    .apptracker-save-card-btn {
-      position: absolute !important;
-      top: 5px !important;
-      right: 5px !important;
-      z-index: 999999 !important;
-      background: #2563eb !important;
-      color: white !important;
-      border: none !important;
-      border-radius: 4px !important;
-      padding: 6px 10px !important;
-      font-size: 12px !important;
-      font-weight: bold !important;
-      cursor: pointer !important;
-      opacity: 0;
-      transition: opacity 0.2s !important;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-    }
-    .apptracker-job-card-hover .apptracker-save-card-btn {
-      opacity: 1;
-    }
-    .apptracker-save-card-btn:hover {
-      background: #1d4ed8 !important;
-    }
-
-    /* Modal Styles */
-    #apptracker-modal {
-      position: fixed !important;
-      top: 20px !important;
-      right: 20px !important;
-      background: white !important;
-      padding: 24px !important;
-      border-radius: 12px !important;
-      width: 400px !important;
-      max-height: calc(100vh - 40px) !important;
-      overflow-y: auto !important;
-      z-index: 2147483647 !important;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0,0,0,0.05) !important;
-      display: flex !important;
-      flex-direction: column !important;
-      gap: 12px !important;
-      font-family: system-ui, sans-serif !important;
-    }
-    #apptracker-modal h3 {
-      margin: 0 0 10px 0 !important;
-      font-size: 18px !important;
-      color: #0f172a !important;
-      font-weight: 600 !important;
-      display: flex !important;
-      justify-content: space-between !important;
-      align-items: center !important;
-    }
-    #apptracker-modal label {
-      font-size: 12px !important;
-      font-weight: 600 !important;
-      color: #475569 !important;
-      margin-bottom: 4px !important;
-      display: block !important;
-    }
-    #apptracker-modal input, #apptracker-modal textarea {
-      width: 100% !important;
-      padding: 8px 10px !important;
-      border: 1px solid #cbd5e1 !important;
-      border-radius: 6px !important;
-      font-family: inherit !important;
-      font-size: 13px !important;
-      box-sizing: border-box !important;
-      background: #f8fafc !important;
-      color: #0f172a !important;
-    }
-    #apptracker-modal textarea {
-      min-height: 120px !important;
-      resize: vertical !important;
-    }
-    #apptracker-modal-actions {
-      display: flex !important;
-      justify-content: flex-end !important;
-      gap: 12px !important;
-      margin-top: 10px !important;
-    }
-    #apptracker-modal-actions button {
-      padding: 8px 16px !important;
-      border-radius: 6px !important;
-      font-weight: 600 !important;
-      cursor: pointer !important;
-      font-size: 13px !important;
-      border: none !important;
-    }
-    #apptracker-modal-cancel {
-      background: #f1f5f9 !important;
-      color: #475569 !important;
-    }
-    #apptracker-modal-cancel:hover {
-      background: #e2e8f0 !important;
-    }
-    #apptracker-modal-save {
-      background: #2563eb !important;
-      color: white !important;
-    }
-    #apptracker-modal-save:hover {
-      background: #1d4ed8 !important;
-    }
-  `;
-  document.head.appendChild(style);
+  if (document.getElementById('apptracker-styles-injected')) return;
+  
+  // Mark as initialized
+  const marker = document.createElement('div');
+  marker.id = 'apptracker-styles-injected';
+  marker.style.display = 'none';
+  document.body.appendChild(marker);
 
   // Observer to find job cards dynamically as they load
   const observer = new MutationObserver(() => {

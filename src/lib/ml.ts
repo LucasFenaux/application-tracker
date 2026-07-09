@@ -46,12 +46,15 @@ class TextGenerationPipeline {
   }
 }
 
-export async function generateTextBuiltin(prompt: string): Promise<string> {
+export async function generateTextBuiltin(prompt: string, overrideModel?: string): Promise<string> {
   try {
     const { getDb } = await import('@/lib/db');
     const db = getDb();
-    const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_builtin_model') as { value: string };
-    const modelName = modelSetting ? modelSetting.value : 'Xenova/TinyLlama-1.1B-Chat-v1.0';
+    let modelName = overrideModel;
+    if (!modelName) {
+      const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_builtin_model') as { value: string };
+      modelName = modelSetting ? modelSetting.value : 'Xenova/TinyLlama-1.1B-Chat-v1.0';
+    }
 
     const generator = await TextGenerationPipeline.getInstance(modelName);
     const output = await generator(prompt, { 
@@ -67,12 +70,15 @@ export async function generateTextBuiltin(prompt: string): Promise<string> {
   }
 }
 
-export async function generateTextOllama(prompt: string): Promise<string> {
+export async function generateTextOllama(prompt: string, overrideModel?: string): Promise<string> {
   try {
     const { getDb } = await import('@/lib/db');
     const db = getDb();
-    const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_ollama_model') as { value: string };
-    const modelName = modelSetting ? modelSetting.value : 'deepseek-r1';
+    let modelName = overrideModel;
+    if (!modelName) {
+      const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_ollama_model') as { value: string };
+      modelName = modelSetting ? modelSetting.value : 'deepseek-r1';
+    }
 
     const response = await fetch('http://127.0.0.1:11434/api/generate', {
       method: 'POST',
@@ -148,5 +154,19 @@ export function calculateMatchScore(similarity: number, mode: string, calibratio
     let normalized = (similarity - minSim) / (maxSim - minSim);
     normalized = Math.pow(Math.max(0, Math.min(1, normalized)), 1.5);
     return Math.max(0, Math.min(100, Math.round(normalized * 100)));
+  }
+}
+
+export async function callScraperLLM(prompt: string, provider: 'ollama' | 'builtin'): Promise<string> {
+  const { getDb } = await import('@/lib/db');
+  const db = getDb();
+  
+  if (provider === 'ollama') {
+    const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('scraper_ai_model') as { value: string };
+    const overrideModel = modelSetting ? modelSetting.value : 'deepseek-r1';
+    return generateTextOllama(prompt, overrideModel);
+  } else {
+    // Builtin doesn't have a separate scraper model setting yet, just use the normal one
+    return generateTextBuiltin(prompt);
   }
 }

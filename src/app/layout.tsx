@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
-import { Briefcase, LayoutDashboard, Calendar, FolderOpen, Settings, Globe, Puzzle } from 'lucide-react';
+import { Briefcase, LayoutDashboard, Calendar, FolderOpen, Settings, Globe, Puzzle, Wand2 } from 'lucide-react';
 import ChatBot from '@/components/ChatBot';
 
 export const metadata: Metadata = {
@@ -48,6 +48,10 @@ export default function RootLayout({
               <Link href="/extension" className="nav-item">
                 <Puzzle size={20} />
                 <span>Extension</span>
+              </Link>
+              <Link href="/ai-cleanup" className="nav-item">
+                <Wand2 size={20} />
+                <span>AI Cleanup</span>
               </Link>
               <Link href="/settings" className="nav-item">
                 <Settings size={20} />

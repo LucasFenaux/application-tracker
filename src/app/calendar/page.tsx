@@ -7,10 +7,39 @@ export const dynamic = 'force-dynamic';
 export default async function CalendarPage() {
   const activities = await getActivities();
 
-  // Simple streak calculation
+  // Streak calculation
+  const activityDates = new Set(activities.map((a: any) => a.date));
   let streak = 0;
-  const todayStr = new Date().toISOString().split('T')[0];
-  const hasActivityToday = activities.some((a: any) => a.date === todayStr);
+  
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+  let currentDate = new Date(today);
+
+  if (activityDates.has(todayStr)) {
+    streak = 1;
+  } else if (activityDates.has(yesterdayStr)) {
+    streak = 1;
+    currentDate = yesterday;
+  }
+
+  if (streak > 0) {
+    while (true) {
+      currentDate.setDate(currentDate.getDate() - 1);
+      const dateStr = currentDate.toISOString().split('T')[0];
+      if (activityDates.has(dateStr)) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+  }
+
+  const hasActivityToday = activityDates.has(todayStr);
 
   // Calculate this week's applications
   const todayDate = new Date();
@@ -49,7 +78,7 @@ export default async function CalendarPage() {
             <h3 style={{ fontSize: '1.2rem', color: 'var(--text-primary)' }}>Current Streak</h3>
           </div>
           <p style={{ fontSize: '2rem', fontWeight: 700, color: '#f59e0b' }}>
-            {hasActivityToday ? '1' : '0'} Days
+            {streak} Days
           </p>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
             Apply to jobs consistently to build your streak!

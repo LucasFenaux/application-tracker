@@ -150,6 +150,30 @@ export function getDb() {
       db.exec('ALTER TABLE jobs ADD COLUMN latest_resume_suggestions TEXT;');
     } catch (e) {}
 
+    try {
+      db.exec('ALTER TABLE jobs ADD COLUMN original_job_data TEXT;');
+    } catch (e) {}
+
+    try {
+      db.exec('ALTER TABLE scraped_jobs ADD COLUMN original_job_data TEXT;');
+    } catch (e) {}
+
+    try {
+      db.exec('ALTER TABLE extension_jobs ADD COLUMN original_job_data TEXT;');
+    } catch (e) {}
+
+    try {
+      db.exec('ALTER TABLE jobs ADD COLUMN deletion_suggested INTEGER DEFAULT 0;');
+    } catch (e) {}
+
+    try {
+      db.exec('ALTER TABLE scraped_jobs ADD COLUMN deletion_suggested INTEGER DEFAULT 0;');
+    } catch (e) {}
+
+    try {
+      db.exec('ALTER TABLE extension_jobs ADD COLUMN deletion_suggested INTEGER DEFAULT 0;');
+    } catch (e) {}
+
     // Initialize default settings
     db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('calibration_mode', 'simple');
     db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('calibration_min', '0.55');
