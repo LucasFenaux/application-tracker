@@ -44,9 +44,9 @@ if (fs.existsSync(serverJsPath)) {
 console.log('Packaging into standalone executables using @yao-pkg/pkg...');
 try {
   let target = '';
-  if (process.platform === 'win32') target = 'node20-win-x64';
-  else if (process.platform === 'darwin') target = 'node20-macos-x64,node20-macos-arm64';
-  else target = 'node20-linux-x64';
+  if (process.platform === 'win32') target = 'node22-win-x64';
+  else if (process.platform === 'darwin') target = 'node22-macos-x64,node22-macos-arm64';
+  else target = 'node22-linux-x64';
   
   execSync(`npx @yao-pkg/pkg package.json -t ${target} --out-path bin`, { stdio: 'inherit' });
   
