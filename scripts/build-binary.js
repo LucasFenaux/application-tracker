@@ -53,13 +53,19 @@ try {
   // Rename the generated binaries to match the exact requested format
   const files = fs.readdirSync(binDir);
   files.forEach(file => {
+    if (file.startsWith('app-')) return; // Already renamed
+
     const oldPath = path.join(binDir, file);
     let newName = '';
     
-    if (file.includes('linux')) newName = 'app-linux';
-    else if (file.includes('macos-x64')) newName = 'app-macos';
-    else if (file.includes('macos-arm64')) newName = 'app-macos-arm64';
-    else if (file.includes('win')) newName = 'app-windows.exe';
+    if (process.platform === 'linux') {
+      newName = 'app-linux';
+    } else if (process.platform === 'win32') {
+      newName = 'app-windows.exe';
+    } else if (process.platform === 'darwin') {
+      if (file.includes('arm64')) newName = 'app-macos-arm64';
+      else newName = 'app-macos';
+    }
     
     if (newName) {
       fs.renameSync(oldPath, path.join(binDir, newName));
