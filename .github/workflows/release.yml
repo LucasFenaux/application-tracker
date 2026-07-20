@@ -31,14 +31,32 @@ jobs:
         run: npm ci
 
       - name: Build Standalone Executables
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:binary
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}
+          path: bin/app-*
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: bin
+          merge-multiple: true
 
       - name: Upload Binaries to Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            bin/app-macos*
-            bin/app-windows.exe
-            bin/app-linux
+          files: bin/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
