@@ -36,8 +36,36 @@ console.log('Patching server.js to remove process.chdir (not supported in pkg sn
 const serverJsPath = path.join(standaloneDir, 'server.js');
 if (fs.existsSync(serverJsPath)) {
   let serverJs = fs.readFileSync(serverJsPath, 'utf8');
-  // Match any variation of process.chdir(...) with optional spaces and semicolons
-  serverJs = serverJs.replace(/process\.chdir\s*\([^)]*\)\s*;?/g, '// process.chdir removed for pkg');
+  
+  // Patch 1: Remove process.chdir as it's not supported in pkg virtual filesystem
+  serverJs = serverJs.replace(
+    /process\.chdir\([^)]+\);?/g,
+    '// process.chdir removed for pkg'
+  );
+  
+  // Patch 2: Inject a mock for 'node:inspector' because pkg base binaries often disable it,
+  // which causes Next.js require-hook to crash with ERR_INSPECTOR_NOT_AVAILABLE.
+  const inspectorMock = `
+const _Module = require('module');
+const _originalRequire = _Module.prototype.require;
+_Module.prototype.require = function(id) {
+  if (id === 'inspector' || id === 'node:inspector') {
+    return {
+      Session: class Session {
+        connect() {}
+        disconnect() {}
+        post() {}
+      },
+      open: () => {},
+      close: () => {},
+      url: () => undefined
+    };
+  }
+  return _originalRequire.apply(this, arguments);
+};
+`;
+  serverJs = inspectorMock + '\n' + serverJs;
+  
   fs.writeFileSync(serverJsPath, serverJs);
 }
 
