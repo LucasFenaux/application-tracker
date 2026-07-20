@@ -43,7 +43,12 @@ if (fs.existsSync(serverJsPath)) {
 
 console.log('Packaging into standalone executables using pkg...');
 try {
-  execSync('npx pkg package.json --out-path bin', { stdio: 'inherit' });
+  let target = '';
+  if (process.platform === 'win32') target = 'node18-win-x64';
+  else if (process.platform === 'darwin') target = 'node18-macos-x64,node18-macos-arm64';
+  else target = 'node18-linux-x64';
+  
+  execSync(`npx pkg package.json -t ${target} --out-path bin`, { stdio: 'inherit' });
   
   // Rename the generated binaries to match the exact requested format
   const files = fs.readdirSync(binDir);
