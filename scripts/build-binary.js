@@ -36,7 +36,8 @@ console.log('Patching server.js to remove process.chdir (not supported in pkg sn
 const serverJsPath = path.join(standaloneDir, 'server.js');
 if (fs.existsSync(serverJsPath)) {
   let serverJs = fs.readFileSync(serverJsPath, 'utf8');
-  serverJs = serverJs.replace(/process\.chdir\(__dirname\)/g, '// process.chdir(__dirname) removed for pkg');
+  // Match any variation of process.chdir(...) with optional spaces and semicolons
+  serverJs = serverJs.replace(/process\.chdir\s*\([^)]*\)\s*;?/g, '// process.chdir removed for pkg');
   fs.writeFileSync(serverJsPath, serverJs);
 }
 
