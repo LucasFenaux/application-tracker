@@ -32,6 +32,14 @@ if (!fs.existsSync(binDir)) {
   fs.mkdirSync(binDir, { recursive: true });
 }
 
+console.log('Patching server.js to remove process.chdir (not supported in pkg snapshot)...');
+const serverJsPath = path.join(standaloneDir, 'server.js');
+if (fs.existsSync(serverJsPath)) {
+  let serverJs = fs.readFileSync(serverJsPath, 'utf8');
+  serverJs = serverJs.replace(/process\.chdir\(__dirname\)/g, '// process.chdir(__dirname) removed for pkg');
+  fs.writeFileSync(serverJsPath, serverJs);
+}
+
 console.log('Packaging into standalone executables using pkg...');
 try {
   execSync('npx pkg package.json --out-path bin', { stdio: 'inherit' });
