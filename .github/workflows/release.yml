@@ -30,8 +30,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            bin/application-tracker-macos*
-            bin/application-tracker-win*
-            bin/application-tracker-linux*
+            bin/app-macos*
+            bin/app-windows.exe
+            bin/app-linux
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

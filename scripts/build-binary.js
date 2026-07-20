@@ -35,6 +35,23 @@ if (!fs.existsSync(binDir)) {
 console.log('Packaging into standalone executables using pkg...');
 try {
   execSync('npx pkg package.json --out-path bin', { stdio: 'inherit' });
+  
+  // Rename the generated binaries to match the exact requested format
+  const files = fs.readdirSync(binDir);
+  files.forEach(file => {
+    const oldPath = path.join(binDir, file);
+    let newName = '';
+    
+    if (file.includes('linux')) newName = 'app-linux';
+    else if (file.includes('macos-x64')) newName = 'app-macos';
+    else if (file.includes('macos-arm64')) newName = 'app-macos-arm64';
+    else if (file.includes('win')) newName = 'app-windows.exe';
+    
+    if (newName) {
+      fs.renameSync(oldPath, path.join(binDir, newName));
+    }
+  });
+
   console.log('Packaging successful. Binaries are available in the "bin" directory.');
 } catch (error) {
   console.error('Packaging failed:', error.message);
