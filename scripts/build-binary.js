@@ -41,14 +41,14 @@ if (fs.existsSync(serverJsPath)) {
   fs.writeFileSync(serverJsPath, serverJs);
 }
 
-console.log('Packaging into standalone executables using pkg...');
+console.log('Packaging into standalone executables using @yao-pkg/pkg...');
 try {
   let target = '';
-  if (process.platform === 'win32') target = 'node18-win-x64';
-  else if (process.platform === 'darwin') target = 'node18-macos-x64,node18-macos-arm64';
-  else target = 'node18-linux-x64';
+  if (process.platform === 'win32') target = 'node20-win-x64';
+  else if (process.platform === 'darwin') target = 'node20-macos-x64,node20-macos-arm64';
+  else target = 'node20-linux-x64';
   
-  execSync(`npx pkg package.json -t ${target} --out-path bin`, { stdio: 'inherit' });
+  execSync(`npx @yao-pkg/pkg package.json -t ${target} --out-path bin`, { stdio: 'inherit' });
   
   // Rename the generated binaries to match the exact requested format
   const files = fs.readdirSync(binDir);

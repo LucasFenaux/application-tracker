@@ -30,9 +30,9 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@yao-pkg/pkg": "^6.21.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
-    "pkg": "^5.8.1",
     "typescript": "^5"
   },
   "allowScripts": {
