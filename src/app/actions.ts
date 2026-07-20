@@ -134,7 +134,8 @@ export async function deleteJob(id: number) {
 
 export async function getDeletedJobs() {
   const db = getDb();
-  // Automatic cleanup of jobs older than 30 days
+  // Automatic cleanup of jobs older than 30 days — archive to ignored_jobs first
+  db.prepare("INSERT OR IGNORE INTO ignored_jobs (title, company, url) SELECT title, company, url FROM jobs WHERE deleted_at <= datetime('now', '-30 days')").run();
   db.prepare("DELETE FROM jobs WHERE deleted_at <= datetime('now', '-30 days')").run();
   
   return db.prepare('SELECT * FROM jobs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC').all() as any[];
@@ -150,6 +151,7 @@ export async function restoreJob(id: number) {
 
 export async function permanentlyDeleteJob(id: number) {
   const db = getDb();
+  db.prepare('INSERT OR IGNORE INTO ignored_jobs (title, company, url) SELECT title, company, url FROM jobs WHERE id = ?').run(id);
   db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
   revalidatePath('/bin');
 }
@@ -485,12 +487,7 @@ export async function pickBackupFolder() {
 
 export async function manualDbBackup() {
   const db = getDb();
-  const backupFolderRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('db_backup_folder') as any;
-  if (!backupFolderRow || !backupFolderRow.value || backupFolderRow.value.trim() === '') {
-    throw new Error('Please set and save a backup folder first.');
-  }
-
-  const targetDir = backupFolderRow.value.trim();
+  const targetDir = path.join(path.dirname(db.name), 'backups');
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
@@ -993,11 +990,13 @@ export async function restoreScrapedJob(id: number) {
 
 export async function hardDeleteScrapedJob(id: number) {
   const db = getDb();
+  db.prepare('INSERT OR IGNORE INTO ignored_jobs (title, company, url) SELECT title, company, url FROM scraped_jobs WHERE id = ?').run(id);
   db.prepare('DELETE FROM scraped_jobs WHERE id = ?').run(id);
 }
 
 export async function getDeletedScrapedJobs() {
   const db = getDb();
+  db.prepare("INSERT OR IGNORE INTO ignored_jobs (title, company, url) SELECT title, company, url FROM scraped_jobs WHERE deleted_at <= datetime('now', '-30 days')").run();
   db.prepare("DELETE FROM scraped_jobs WHERE deleted_at <= datetime('now', '-30 days')").run();
   return db.prepare('SELECT * FROM scraped_jobs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC').all() as any[];
 }
@@ -1054,11 +1053,13 @@ export async function restoreExtensionJob(id: number) {
 
 export async function hardDeleteExtensionJob(id: number) {
   const db = getDb();
+  db.prepare('INSERT OR IGNORE INTO ignored_jobs (title, company, url) SELECT title, company, url FROM extension_jobs WHERE id = ?').run(id);
   db.prepare('DELETE FROM extension_jobs WHERE id = ?').run(id);
 }
 
 export async function getDeletedExtensionJobs() {
   const db = getDb();
+  db.prepare("INSERT OR IGNORE INTO ignored_jobs (title, company, url) SELECT title, company, url FROM extension_jobs WHERE deleted_at <= datetime('now', '-30 days')").run();
   db.prepare("DELETE FROM extension_jobs WHERE deleted_at <= datetime('now', '-30 days')").run();
   return db.prepare('SELECT * FROM extension_jobs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC').all() as any[];
 }
@@ -1078,16 +1079,19 @@ export async function moveToMainBoardFromExtension(id: number) {
 
 export async function emptyMainBin() {
   const db = getDb();
+  db.prepare('INSERT OR IGNORE INTO ignored_jobs (title, company, url) SELECT title, company, url FROM jobs WHERE deleted_at IS NOT NULL').run();
   db.prepare('DELETE FROM jobs WHERE deleted_at IS NOT NULL').run();
 }
 
 export async function emptyScraperBin() {
   const db = getDb();
+  db.prepare('INSERT OR IGNORE INTO ignored_jobs (title, company, url) SELECT title, company, url FROM scraped_jobs WHERE deleted_at IS NOT NULL').run();
   db.prepare('DELETE FROM scraped_jobs WHERE deleted_at IS NOT NULL').run();
 }
 
 export async function emptyExtensionBin() {
   const db = getDb();
+  db.prepare('INSERT OR IGNORE INTO ignored_jobs (title, company, url) SELECT title, company, url FROM extension_jobs WHERE deleted_at IS NOT NULL').run();
   db.prepare('DELETE FROM extension_jobs WHERE deleted_at IS NOT NULL').run();
 }
 

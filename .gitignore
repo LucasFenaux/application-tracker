@@ -59,3 +59,11 @@ database.sqlite
 
 # Scratchpad
 scratch/
+
+# others
+CLAUDE.md
+AGENTS.md
+
+# Compiled Binaries and Local Data
+/bin/
+/data/

@@ -170,7 +170,8 @@ ${truncatedText}`;
           
           const existingScraped = db.prepare('SELECT id FROM scraped_jobs WHERE title = ? AND company = ?').get(job.title, job.company);
           const existingMain = db.prepare('SELECT id FROM jobs WHERE title = ? AND company = ?').get(job.title, job.company);
-          if (existingScraped || existingMain) continue;
+          const existingIgnored = db.prepare('SELECT id FROM ignored_jobs WHERE title = ? AND company = ?').get(job.title, job.company);
+          if (existingScraped || existingMain || existingIgnored) continue;
           
           jobs.push({
             title: job.title.toString().substring(0, 200).trim(),
@@ -192,7 +193,8 @@ ${truncatedText}`;
   const validLinks = jobLinks.filter((link: string) => {
     const existingScraped = db.prepare('SELECT id FROM scraped_jobs WHERE url = ? AND url IS NOT NULL AND url != \'\'').get(link);
     const existingMain = db.prepare('SELECT id FROM jobs WHERE url = ? AND url IS NOT NULL AND url != \'\'').get(link);
-    return !existingScraped && !existingMain;
+    const existingIgnored = db.prepare('SELECT id FROM ignored_jobs WHERE url = ? AND url IS NOT NULL AND url != \'\'').get(link);
+    return !existingScraped && !existingMain && !existingIgnored;
   });
 
   console.log(`[Scraper] Found ${jobLinks.length} links on page, ${validLinks.length} are new URLs.`);
@@ -226,8 +228,9 @@ ${truncatedText}`;
       // Secondary Title+Company Deduplication Check
       const existingScraped = db.prepare('SELECT id FROM scraped_jobs WHERE title = ? AND company = ?').get(details.title, details.company);
       const existingMain = db.prepare('SELECT id FROM jobs WHERE title = ? AND company = ?').get(details.title, details.company);
+      const existingIgnored = db.prepare('SELECT id FROM ignored_jobs WHERE title = ? AND company = ?').get(details.title, details.company);
       
-      if (existingScraped || existingMain) {
+      if (existingScraped || existingMain || existingIgnored) {
         console.log(`[Scraper] Skipping duplicate job during parse: ${details.title}`);
         continue;
       }
@@ -436,7 +439,8 @@ Return ONLY a valid JSON object.`;
       rawJobs = rawJobs.filter(j => {
         const existingScraped = db.prepare('SELECT id FROM scraped_jobs WHERE title = ? AND company = ?').get(j.title, j.company);
         const existingMain = db.prepare('SELECT id FROM jobs WHERE title = ? AND company = ?').get(j.title, j.company);
-        return !existingScraped && !existingMain;
+        const existingIgnored = db.prepare('SELECT id FROM ignored_jobs WHERE title = ? AND company = ?').get(j.title, j.company);
+        return !existingScraped && !existingMain && !existingIgnored;
       });
       console.log(`[Scraper] Tier 1 yielded ${rawJobs.length} new jobs.`);
     }
@@ -505,8 +509,9 @@ Return ONLY a valid JSON object.`;
       // DE-DUPLICATION CHECK
       const existingScraped = db.prepare('SELECT id FROM scraped_jobs WHERE (url = ? AND url IS NOT NULL AND url != \'\') OR (title = ? AND company = ?)').get(job.url, job.title, job.company);
       const existingMain = db.prepare('SELECT id FROM jobs WHERE (url = ? AND url IS NOT NULL AND url != \'\') OR (title = ? AND company = ?)').get(job.url, job.title, job.company);
+      const existingIgnored = db.prepare('SELECT id FROM ignored_jobs WHERE (url = ? AND url IS NOT NULL AND url != \'\') OR (title = ? AND company = ?)').get(job.url, job.title, job.company);
       
-      if (existingScraped || existingMain) {
+      if (existingScraped || existingMain || existingIgnored) {
         console.log(`[Scraper] Skipping duplicate job: ${job.title} at ${job.company}`);
         continue;
       }
@@ -671,7 +676,8 @@ export async function runDeepScrapeTask(targetUrl: string, website: string, focu
       rawJobs = rawJobs.filter(j => {
         const existingScraped = db.prepare('SELECT id FROM scraped_jobs WHERE (url = ? AND url IS NOT NULL AND url != \'\') OR (title = ? AND company = ?)').get(j.url, j.title, j.company);
         const existingMain = db.prepare('SELECT id FROM jobs WHERE (url = ? AND url IS NOT NULL AND url != \'\') OR (title = ? AND company = ?)').get(j.url, j.title, j.company);
-        return !existingScraped && !existingMain;
+        const existingIgnored = db.prepare('SELECT id FROM ignored_jobs WHERE (url = ? AND url IS NOT NULL AND url != \'\') OR (title = ? AND company = ?)').get(j.url, j.title, j.company);
+        return !existingScraped && !existingMain && !existingIgnored;
       });
 
       // Deduplicate internally
@@ -748,7 +754,7 @@ export async function runDeepScrapeTask(targetUrl: string, website: string, focu
           const rect = el.getBoundingClientRect();
           if (rect.width === 0 || rect.height === 0) continue;
           
-          let text = (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim();
+          let text = ((el as HTMLElement).innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim();
           if (!text || text.length < 2) continue;
           
           const id = 'ai-node-' + idCounter++;
@@ -819,11 +825,11 @@ ${JSON.stringify(domData, null, 2)}
     }
     
     db.prepare('UPDATE scraper_logs SET status = ?, jobs_found = ? WHERE id = ?').run('success', totalJobsAdded, logId);
-    updateStatus(`Deep Scrape Success: Explored ${website} and added ${totalJobsAdded} matching jobs.`, 100);
+    console.log(`Deep Scrape Success: Explored ${website} and added ${totalJobsAdded} matching jobs.`);
     return { jobsAdded: totalJobsAdded };
   } catch (err: any) {
     console.error('[DeepScrape Error]', err);
-    updateStatus(`Deep Scrape Failed: ${err.message}`, 100);
+    console.log(`Deep Scrape Failed: ${err.message}`);
     return { jobsAdded: totalJobsAdded };
   } finally {
     if (browser) await browser.close();

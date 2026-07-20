@@ -78,9 +78,6 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
   const [isSavingGoal, setIsSavingGoal] = useState(false);
 
   // System State
-  const [dbBackupFolder, setDbBackupFolder] = useState(settings.db_backup_folder || '');
-  const [isSavingBackup, setIsSavingBackup] = useState(false);
-  const [isPickingFolder, setIsPickingFolder] = useState(false);
   const [isManuallyBackingUp, setIsManuallyBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
@@ -256,33 +253,6 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
       alert(`Error saving target job goal: ${err.message}`);
     } finally {
       setIsSavingGoal(false);
-    }
-  };
-
-  const handleSaveDbBackupFolder = async () => {
-    setIsSavingBackup(true);
-    try {
-      await updateSetting('db_backup_folder', dbBackupFolder);
-      alert('Database backup folder saved successfully. The app will smartly back up your tracker.db to this folder every 12 hours.');
-    } catch (err: any) {
-      alert(`Error saving DB backup folder: ${err.message}`);
-    } finally {
-      setIsSavingBackup(false);
-    }
-  };
-
-  const handlePickFolder = async () => {
-    setIsPickingFolder(true);
-    try {
-      const { pickBackupFolder } = await import('@/app/actions');
-      const result = await pickBackupFolder();
-      if (result.path) {
-        setDbBackupFolder(result.path);
-      }
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setIsPickingFolder(false);
     }
   };
 
@@ -892,32 +862,9 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
           <div style={{ background: 'rgba(0,0,0,0.1)', border: '1px solid var(--surface-border)', padding: '1.5rem', borderRadius: '8px' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Database Automated Backup</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-              Specify an absolute folder path where the application will smartly back up your <code>tracker.db</code> database every 12 hours. 
-              The system will keep the most recent 7 backups automatically.
+              The application smartly backs up your <code>tracker.db</code> database automatically every 12 hours.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input 
-                  type="text" 
-                  value={dbBackupFolder}
-                  onChange={(e) => setDbBackupFolder(e.target.value)}
-                  placeholder="/Users/username/Backups/AppTracker"
-                  style={{ flex: 1, padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
-                />
-                <button 
-                  onClick={handlePickFolder} 
-                  disabled={isPickingFolder}
-                  style={{ padding: '0 1rem', background: 'var(--surface-border)', border: 'none', borderRadius: '6px', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 500 }}
-                >
-                  {isPickingFolder ? '...' : 'Browse...'}
-                </button>
-              </div>
-              <button className="btn-primary" onClick={handleSaveDbBackupFolder} disabled={isSavingBackup} style={{ alignSelf: 'flex-start' }}>
-                <Save size={16} /> {isSavingBackup ? 'Saving...' : 'Save Backup Location'}
-              </button>
-            </div>
-            
-            <div style={{ marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1.5rem' }}>
+            <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1.5rem' }}>
               <h4 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Manual Backup</h4>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>
                 Trigger an immediate backup. This will save to a single <code>tracker_manual_backup_latest.db</code> file in your backup folder, ensuring it doesn't take up too much space.
@@ -925,7 +872,7 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
               <button 
                 className="btn-secondary" 
                 onClick={handleManualBackup} 
-                disabled={isManuallyBackingUp || !dbBackupFolder.trim()} 
+                disabled={isManuallyBackingUp} 
                 style={{ alignSelf: 'flex-start', color: 'var(--text-primary)' }}
               >
                 {isManuallyBackingUp ? <Loader2 size={16} className="spin" style={{ display: 'inline' }} /> : <Save size={16} style={{ display: 'inline' }} />}

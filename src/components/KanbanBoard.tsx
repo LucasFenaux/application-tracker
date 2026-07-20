@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { updateJobStage, aiCleanupJob } from '@/app/actions';
 import { ExternalLink, Calendar as CalendarIcon, Wand2, Loader2, RefreshCw } from 'lucide-react';
 import DeleteJobButton from './DeleteJobButton';
@@ -14,6 +14,28 @@ export default function KanbanBoard({ initialJobs }: { initialJobs: any[] }) {
   const [cleaningJobs, setCleaningJobs] = useState<Record<number, boolean>>({});
   const [globalCleaningJobs, setGlobalCleaningJobs] = useState<Record<number, boolean>>({});
   const [showingOriginals, setShowingOriginals] = useState<Record<number, boolean>>({});
+
+  const boardRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const [boardWidth, setBoardWidth] = useState(1700);
+
+  useEffect(() => {
+    if (boardRef.current) {
+      setBoardWidth(boardRef.current.scrollWidth);
+    }
+  }, [jobs]);
+
+  const handleTopScroll = () => {
+    if (boardRef.current && topScrollRef.current) {
+      boardRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    }
+  };
+
+  const handleBottomScroll = () => {
+    if (boardRef.current && topScrollRef.current) {
+      topScrollRef.current.scrollLeft = boardRef.current.scrollLeft;
+    }
+  };
 
   const handleCleanup = async (e: React.MouseEvent, jobId: number) => {
     e.preventDefault();
@@ -97,7 +119,19 @@ export default function KanbanBoard({ initialJobs }: { initialJobs: any[] }) {
   };
 
   return (
-    <div className="kanban-board">
+    <div>
+      <div 
+        ref={topScrollRef} 
+        style={{ overflowX: 'auto', marginBottom: '10px' }}
+        onScroll={handleTopScroll}
+      >
+        <div style={{ height: '1px', width: boardWidth }} />
+      </div>
+      <div 
+        className="kanban-board" 
+        ref={boardRef}
+        onScroll={handleBottomScroll}
+      >
       {STAGES.map(stage => {
         const stageJobs = jobs.filter(j => j.stage === stage);
         const isDragOver = dragOverStage === stage;
@@ -248,6 +282,7 @@ export default function KanbanBoard({ initialJobs }: { initialJobs: any[] }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

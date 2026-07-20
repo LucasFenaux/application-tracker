@@ -2,9 +2,11 @@
   "name": "application-tracker",
   "version": "0.1.0",
   "private": true,
+  "bin": ".next/standalone/server.js",
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=16384' next dev",
     "build": "next build",
+    "build:binary": "node scripts/build-binary.js",
     "start": "next start",
     "lint": "eslint"
   },
@@ -30,9 +32,27 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "pkg": "^5.8.1",
     "typescript": "^5"
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true
+  },
+  "pkg": {
+    "scripts": [
+      ".next/standalone/**/*.js"
+    ],
+    "assets": [
+      ".next/standalone/public/**/*",
+      ".next/standalone/.next/**/*",
+      "node_modules/better-sqlite3/build/Release/better_sqlite3.node",
+      "node_modules/@xenova/transformers/**/*"
+    ],
+    "targets": [
+      "node18-macos-x64",
+      "node18-macos-arm64",
+      "node18-win-x64",
+      "node18-linux-x64"
+    ]
   }
 }

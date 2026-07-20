@@ -7,7 +7,12 @@ let lastBackupCheck = 0;
 
 export function getDb() {
   if (!db) {
-    db = new Database(path.join(process.cwd(), 'tracker.db'));
+    const dataDir = process.env.APP_DATA_DIR || (process.cwd() + '/data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    const dbPath = process.env.SQLITE_DB_PATH || path.join(dataDir, 'tracker.db');
+    db = new Database(dbPath);
     
     // Initialize schema
     db.exec(`
@@ -105,6 +110,14 @@ export function getDb() {
         status TEXT DEFAULT 'pending_review',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         vector TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS ignored_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        company TEXT NOT NULL,
+        url TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -217,8 +230,7 @@ Please suggest exactly 3 to 5 specific, actionable bullet point tweaks I should 
 
 async function performSmartBackup() {
   try {
-    const backupFolderRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('db_backup_folder') as any;
-    if (!backupFolderRow || !backupFolderRow.value || backupFolderRow.value.trim() === '') return;
+
 
     // Use an EXCLUSIVE transaction to prevent multiple workers from starting a backup simultaneously
     const checkAndLock = db.transaction(() => {
@@ -238,7 +250,7 @@ async function performSmartBackup() {
     const shouldBackup = checkAndLock.exclusive();
     if (!shouldBackup) return;
 
-    const targetDir = backupFolderRow.value.trim();
+    const targetDir = path.join(path.dirname(db.name), 'backups');
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });
     }
@@ -272,16 +284,11 @@ export async function restoreDbFromBackup(backupPath: string) {
   }
 
   // 1. Pre-restore backup
-  const backupFolderRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('db_backup_folder') as any;
-  let preRestorePath = path.join(process.cwd(), 'tracker_pre_restore_backup.db');
-  
-  if (backupFolderRow && backupFolderRow.value && backupFolderRow.value.trim() !== '') {
-    const targetDir = backupFolderRow.value.trim();
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
-    preRestorePath = path.join(targetDir, 'tracker_pre_restore_backup.db');
+  const targetDir = path.join(path.dirname(db.name), 'backups');
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
   }
+  const preRestorePath = path.join(targetDir, 'tracker_pre_restore_backup.db');
 
   // Use the safe backup API to save the current state
   await db.backup(preRestorePath);
@@ -290,7 +297,8 @@ export async function restoreDbFromBackup(backupPath: string) {
   db.close();
 
   // 3. Overwrite the database file
-  const dbPath = path.join(process.cwd(), 'tracker.db');
+  const dataDir = process.env.APP_DATA_DIR || (process.cwd() + '/data');
+  const dbPath = process.env.SQLITE_DB_PATH || path.join(dataDir, 'tracker.db');
   fs.copyFileSync(backupPath, dbPath);
 
   // 4. Clear the module reference so it re-initializes on next getDb()
