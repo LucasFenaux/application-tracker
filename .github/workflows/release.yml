@@ -30,14 +30,6 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Fetch cross-architecture macOS onnxruntime-node binaries (to avoid using slow macos-13 runners)
-        if: runner.os == 'macOS'
-        run: |
-          ONNX_VERSION=$(node -e "console.log(require('onnxruntime-node/package.json').version)")
-          mkdir -p .tmp-onnx
-          npm install --prefix .tmp-onnx --no-save --arch=x64 onnxruntime-node@$ONNX_VERSION
-          cp -r .tmp-onnx/node_modules/onnxruntime-node/bin/napi-v3/darwin/x64 node_modules/onnxruntime-node/bin/napi-v3/darwin/
-
 
       - name: Build Standalone Executables
         env:
