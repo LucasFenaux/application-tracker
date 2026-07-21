@@ -108,7 +108,7 @@ console.log('Packaging into standalone executables using @yao-pkg/pkg...');
 try {
   let target = '';
   if (process.platform === 'win32') target = 'node22-win-x64';
-  else if (process.platform === 'darwin') target = 'node22-macos-x64,node22-macos-arm64';
+  else if (process.platform === 'darwin') target = process.arch === 'arm64' ? 'node22-macos-arm64' : 'node22-macos-x64';
   else target = 'node22-linux-x64';
   
   execSync(`npx @yao-pkg/pkg package.json -t ${target} --out-path bin`, { stdio: 'inherit' });
@@ -126,7 +126,7 @@ try {
     } else if (process.platform === 'win32') {
       newName = 'app-windows.exe';
     } else if (process.platform === 'darwin') {
-      if (file.includes('arm64')) newName = 'app-macos-arm64';
+      if (process.arch === 'arm64') newName = 'app-macos-arm64';
       else newName = 'app-macos';
     }
     
