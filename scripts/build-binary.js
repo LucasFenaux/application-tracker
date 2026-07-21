@@ -64,9 +64,44 @@ _Module.prototype.require = function(id) {
   return _originalRequire.apply(this, arguments);
 };
 `;
-  serverJs = inspectorMock + '\n' + serverJs;
+
+  // Patch 3: Extract onnxruntime-node binaries to real filesystem so dlopen can find the .dylib
+  const extractOnnx = `
+const _fs = require('fs');
+const _path = require('path');
+const _os = require('os');
+const onnxTmpDir = _path.join(_os.tmpdir(), 'application-tracker-onnx');
+try {
+  if (!_fs.existsSync(onnxTmpDir)) {
+    _fs.mkdirSync(onnxTmpDir, { recursive: true });
+    _fs.cpSync(_path.join(__dirname, 'node_modules/onnxruntime-node/bin'), onnxTmpDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Failed to extract onnx binaries:', e.message);
+}
+`;
+
+  serverJs = inspectorMock + '\n' + extractOnnx + '\n' + serverJs;
   
   fs.writeFileSync(serverJsPath, serverJs);
+}
+
+console.log('Copying all onnxruntime-node binaries to standalone directory...');
+const onnxSrcBin = path.join(__dirname, '../node_modules/onnxruntime-node/bin');
+const onnxDestBin = path.join(standaloneDir, 'node_modules/onnxruntime-node/bin');
+if (fs.existsSync(onnxSrcBin)) {
+  fs.cpSync(onnxSrcBin, onnxDestBin, { recursive: true });
+}
+
+console.log('Patching onnxruntime-node binding.js to point to extracted binaries...');
+const bindingJsPath = path.join(standaloneDir, 'node_modules/onnxruntime-node/dist/binding.js');
+if (fs.existsSync(bindingJsPath)) {
+  let bindingJs = fs.readFileSync(bindingJsPath, 'utf8');
+  bindingJs = bindingJs.replace(
+    /\`\.\.\/bin\/napi-v3\/\$\{process\.platform\}\/\$\{process\.arch\}\/onnxruntime_binding\.node\`/g,
+    `require('path').join(require('os').tmpdir(), 'application-tracker-onnx', 'napi-v3', process.platform, process.arch, 'onnxruntime_binding.node')`
+  );
+  fs.writeFileSync(bindingJsPath, bindingJs);
 }
 
 console.log('Packaging into standalone executables using @yao-pkg/pkg...');
