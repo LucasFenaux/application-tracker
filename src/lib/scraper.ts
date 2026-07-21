@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import { getDb } from './db';
-import { generateTextBuiltin, generateEmbedding, cosineSimilarity, generateTextOllama, calculateMatchScore, callScraperLLM } from './ml';
+import { generateEmbedding, cosineSimilarity, generateTextOllama, calculateMatchScore, callScraperLLM } from './ml';
 
 // Basic configuration for the persistent context
 const USER_DATA_DIR = './playwright-user-data';
@@ -16,7 +16,7 @@ interface ScrapedJobRaw {
 /**
  * A highly generic parser that just looks for common job card patterns.
  */
-async function parseGeneric(page: any, targetUrl: string, pageNumber: number = 1, provider: 'ollama' | 'builtin' = 'builtin'): Promise<ScrapedJobRaw[]> {
+async function parseGeneric(page: any, targetUrl: string, pageNumber: number = 1): Promise<ScrapedJobRaw[]> {
   await page.waitForTimeout(5000);
   
   if (pageNumber > 1) {
@@ -40,7 +40,7 @@ Return ONLY a JSON object: {"nextButtonText": "exact text"} or {"nextButtonText"
 Elements: ${JSON.stringify(uniqueElements.slice(0, 50))}`;
       
       try {
-        let response = await callScraperLLM(prompt, provider);
+        let response = await callScraperLLM(prompt);
         response = response.replace(/<think>[\s\S]*?<\/think>/, '').trim();
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -111,7 +111,7 @@ CRITICAL RULES:
 Input Links: ${JSON.stringify(linksToProcess)}`;
 
     try {
-      let response = await callScraperLLM(prompt, provider);
+      let response = await callScraperLLM(prompt);
       response = response.replace(/<think>[\s\S]*?<\/think>/, '').trim();
       
       try {
@@ -150,7 +150,7 @@ Page Text:
 ${truncatedText}`;
     
     try {
-      let response = await callScraperLLM(textPrompt, provider);
+      let response = await callScraperLLM(textPrompt);
       response = response.replace(/<think>[\s\S]*?<\/think>/, '').trim();
       
       let jobsList: any[] = [];
@@ -247,7 +247,7 @@ ${truncatedText}`;
   return jobs;
 }
 
-export async function runScraperTask(url: string, website: string, focus: string, minMatch: number, minGoalMatch: number, provider: 'ollama'|'builtin' = 'builtin', pageNumber: number = 1) {
+export async function runScraperTask(url: string, website: string, focus: string, minMatch: number, minGoalMatch: number, pageNumber: number = 1) {
   const db = getDb();
   
   const updateStatus = (status: string, progress: number) => {
@@ -372,7 +372,7 @@ Input fields: ${JSON.stringify(inputs)}
 Return ONLY a valid JSON object.`;
 
         try {
-          let response = await callScraperLLM(prompt, provider);
+          let response = await callScraperLLM(prompt);
           response = response.replace(/<think>[\s\S]*?<\/think>/, '').trim();
           const jsonMatch = response.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
@@ -448,7 +448,7 @@ Return ONLY a valid JSON object.`;
     if (rawJobs.length === 0) {
       console.log(`[Scraper] Tier 1 yielded 0 jobs, falling back to DOM Parsing...`);
       updateStatus(`Parsing job listings from ${website}...`, 30);
-      rawJobs = await parseGeneric(page, targetUrl, pageNumber, provider); 
+      rawJobs = await parseGeneric(page, targetUrl, pageNumber); 
     }
 
     console.log(`[Scraper] Found ${rawJobs.length} raw jobs. Filtering...`);
@@ -593,7 +593,7 @@ Return ONLY a valid JSON object.`;
   }
 }
 
-export async function runDeepScrapeTask(targetUrl: string, website: string, focus: string, minMatch: number, minGoalMatch: number, provider: 'ollama'|'builtin' = 'ollama') {
+export async function runDeepScrapeTask(targetUrl: string, website: string, focus: string, minMatch: number, minGoalMatch: number) {
   const db = getDb();
   let browser;
   let totalJobsAdded = 0;
@@ -669,7 +669,7 @@ export async function runDeepScrapeTask(targetUrl: string, website: string, focu
         sniffedJobs = []; // clear for next iteration
       }
       
-      const domJobs = await parseGeneric(page, page.url(), 1, provider);
+      const domJobs = await parseGeneric(page, page.url(), 1);
       rawJobs.push(...domJobs);
       
       // Filter out DB duplicates early
@@ -801,7 +801,7 @@ ${JSON.stringify(domData, null, 2)}
 `;
 
       try {
-        let response = await callScraperLLM(prompt, provider);
+        let response = await callScraperLLM(prompt);
         response = response.replace(/<think>[\s\S]*?<\/think>/, '').trim();
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (jsonMatch) {

@@ -44,6 +44,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:binary
 
+      - name: Sign macOS binaries
+        if: runner.os == 'macOS'
+        run: |
+          if [ -f "bin/app-macos-arm64" ]; then codesign --force -s - bin/app-macos-arm64; fi
+          if [ -f "bin/app-macos-x64" ]; then codesign --force -s - bin/app-macos-x64; fi
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:

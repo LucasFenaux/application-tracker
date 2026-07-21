@@ -82,9 +82,7 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
   const [isRestoring, setIsRestoring] = useState(false);
 
   // AI Models State
-  const [aiProvider, setAiProvider] = useState<'ollama' | 'builtin'>(settings.ai_provider || 'ollama');
   const [aiOllamaModel, setAiOllamaModel] = useState(settings.ai_ollama_model || 'deepseek-r1');
-  const [aiBuiltinModel, setAiBuiltinModel] = useState(settings.ai_builtin_model || 'Xenova/TinyLlama-1.1B-Chat-v1.0');
   const [scraperAiModel, setScraperAiModel] = useState(settings.scraper_ai_model || 'deepseek-r1');
   const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
   const [isSavingAiModels, setIsSavingAiModels] = useState(false);
@@ -293,9 +291,7 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
 
   const handleSaveAiModels = async () => {
     setIsSavingAiModels(true);
-    await updateSetting('ai_provider', aiProvider);
     await updateSetting('ai_ollama_model', aiOllamaModel);
-    await updateSetting('ai_builtin_model', aiBuiltinModel);
     await updateSetting('scraper_ai_model', scraperAiModel);
     await updateSetting('cleanup_pause_seconds', cleanupPause.toString());
     setIsSavingAiModels(false);
@@ -772,73 +768,41 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>AI Provider</label>
-                <select 
-                  value={aiProvider} 
-                  onChange={(e) => setAiProvider(e.target.value as 'ollama' | 'builtin')}
-                  style={{ width: '100%', padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
-                >
-                  <option value="ollama">Ollama (Local Custom Models - Recommended)</option>
-                  <option value="builtin">Built-in (TinyLlama - Downloads ~700MB)</option>
-                </select>
-              </div>
-
-              {aiProvider === 'ollama' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>Ollama LLM Model</label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <select 
-                      value={aiOllamaModel} 
-                      onChange={(e) => setAiOllamaModel(e.target.value)}
-                      style={{ flex: 1, padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
-                    >
-                      {availableOllamaModels.map(m => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                      {!availableOllamaModels.includes(aiOllamaModel) && (
-                        <option value={aiOllamaModel}>{aiOllamaModel}</option>
-                      )}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {aiProvider === 'ollama' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>Ollama Scraper Enhancement Model</label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <select 
-                      value={scraperAiModel} 
-                      onChange={(e) => setScraperAiModel(e.target.value)}
-                      style={{ flex: 1, padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
-                    >
-                      {availableOllamaModels.map(m => (
-                        <option key={`scraper-${m}`} value={m}>{m}</option>
-                      ))}
-                      {!availableOllamaModels.includes(scraperAiModel) && (
-                        <option value={scraperAiModel}>{scraperAiModel}</option>
-                      )}
-                    </select>
-                  </div>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>Recommended: Fast 8B models (e.g. Llama-3 8B) to keep scraping speed high.</p>
-                </div>
-              )}
-              
-              {aiProvider === 'builtin' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>Built-in Quantized Model</label>
+                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>Ollama LLM Model</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <select 
-                    value={aiBuiltinModel} 
-                    onChange={(e) => setAiBuiltinModel(e.target.value)}
-                    style={{ width: '100%', padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                    value={aiOllamaModel} 
+                    onChange={(e) => setAiOllamaModel(e.target.value)}
+                    style={{ flex: 1, padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
                   >
-                    <option value="Xenova/TinyLlama-1.1B-Chat-v1.0">TinyLlama 1.1B (Fastest ~700MB)</option>
-                    <option value="Xenova/Qwen1.5-0.5B-Chat">Qwen 1.5 0.5B (Tiny & Smart ~400MB)</option>
-                    <option value="Xenova/Qwen1.5-1.8B-Chat">Qwen 1.5 1.8B (Stronger ~1.2GB)</option>
-                    <option value="Xenova/Phi-3-mini-4k-instruct">Phi-3 Mini 3.8B (Very Strong ~2.4GB)</option>
+                    {availableOllamaModels.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                    {!availableOllamaModels.includes(aiOllamaModel) && (
+                      <option value={aiOllamaModel}>{aiOllamaModel}</option>
+                    )}
                   </select>
                 </div>
-              )}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>Ollama Scraper Enhancement Model</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <select 
+                    value={scraperAiModel} 
+                    onChange={(e) => setScraperAiModel(e.target.value)}
+                    style={{ flex: 1, padding: '10px', fontSize: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                  >
+                    {availableOllamaModels.map(m => (
+                      <option key={`scraper-${m}`} value={m}>{m}</option>
+                    ))}
+                    {!availableOllamaModels.includes(scraperAiModel) && (
+                      <option value={scraperAiModel}>{scraperAiModel}</option>
+                    )}
+                  </select>
+                </div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>Recommended: Fast 8B models (e.g. Llama-3 8B) to keep scraping speed high.</p>
+              </div>
               
               <div style={{ marginTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '6px', color: 'var(--text-secondary)' }}>AI Cleanup Pause (Seconds)</label>

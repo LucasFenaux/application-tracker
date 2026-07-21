@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { generateTextBuiltin, generateTextOllama } from '@/lib/ml';
+import { generateTextOllama } from '@/lib/ml';
 import fs from 'fs';
 import path from 'path';
 import pdfParse from '@/lib/pdf';
@@ -60,28 +60,16 @@ Provide a concise, helpful, and direct answer. Format your response in Markdown.
 
     let responseText = '';
 
-    if (provider === 'ollama') {
-      try {
-        responseText = await generateTextOllama(prompt);
-        // Clean out any <think> blocks if present (from reasoning models)
-        responseText = responseText.replace(/<think>[\s\S]*?<\/think>/, '').trim();
-      } catch (err: any) {
-        console.error('Ollama Error in Chat API:', err);
-        return NextResponse.json(
-          { error: 'Failed to communicate with local Ollama server. Make sure it is running.' }, 
-          { status: 503 }
-        );
-      }
-    } else {
-      try {
-        responseText = await generateTextBuiltin(prompt);
-      } catch (err: any) {
-        console.error('Built-in Model Error in Chat API:', err);
-        return NextResponse.json(
-          { error: 'Failed to generate response using the built-in model.' }, 
-          { status: 500 }
-        );
-      }
+    try {
+      responseText = await generateTextOllama(prompt);
+      // Clean out any <think> blocks if present (from reasoning models)
+      responseText = responseText.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+    } catch (err: any) {
+      console.error('Ollama Error in Chat API:', err);
+      return NextResponse.json(
+        { error: 'Failed to communicate with local Ollama server. Make sure it is running.' }, 
+        { status: 503 }
+      );
     }
 
     return NextResponse.json({ response: responseText });

@@ -1,72 +1,22 @@
-import { pipeline, env } from '@xenova/transformers';
-
-// Try to use CoreML for Apple Silicon GPU acceleration, fallback to CPU
-env.backends.onnx.executionProviders = ['coreml', 'cpu'];
-
-class PipelineSingleton {
-  static task = 'feature-extraction';
-  static model = 'Xenova/bge-large-en-v1.5';
-  static instance: any = null;
-
-  static async getInstance(progress_callback?: Function) {
-    if (this.instance === null) {
-      this.instance = pipeline(this.task as any, this.model, { progress_callback });
-    }
-    return this.instance;
-  }
-}
-
 export async function generateEmbedding(text: string): Promise<number[]> {
   if (!text || text.trim() === '') return [];
   try {
-    const embedder = await PipelineSingleton.getInstance();
-    const output = await embedder(text, { pooling: 'mean', normalize: true });
-    return Array.from(output.data);
+    const response = await fetch('http://127.0.0.1:11434/api/embeddings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'nomic-embed-text', // You may need to have this model downloaded in Ollama: ollama pull nomic-embed-text
+        prompt: text
+      })
+    });
+    if (!response.ok) {
+      throw new Error(`Ollama embeddings failed with status: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.embedding;
   } catch (err) {
     console.error('Error generating embedding:', err);
     return [];
-  }
-}
-
-class TextGenerationPipeline {
-  static task = 'text-generation';
-  static model = 'Xenova/TinyLlama-1.1B-Chat-v1.0';
-  static instance: any = null;
-
-  static async getInstance(modelName: string, progress_callback?: Function) {
-    if (this.instance === null || this.model !== modelName) {
-      this.model = modelName;
-      this.instance = pipeline(this.task as any, this.model, { 
-        progress_callback,
-        // Quantized models take less RAM
-        dtype: 'q4' 
-      } as any);
-    }
-    return this.instance;
-  }
-}
-
-export async function generateTextBuiltin(prompt: string, overrideModel?: string): Promise<string> {
-  try {
-    const { getDb } = await import('@/lib/db');
-    const db = getDb();
-    let modelName = overrideModel;
-    if (!modelName) {
-      const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_builtin_model') as { value: string };
-      modelName = modelSetting ? modelSetting.value : 'Xenova/TinyLlama-1.1B-Chat-v1.0';
-    }
-
-    const generator = await TextGenerationPipeline.getInstance(modelName);
-    const output = await generator(prompt, { 
-      max_new_tokens: 400,
-      temperature: 0.7,
-      do_sample: true,
-      return_full_text: false 
-    });
-    return output[0].generated_text.trim();
-  } catch (err) {
-    console.error('Error in built-in generation:', err);
-    throw new Error('Failed to generate suggestions using built-in model.');
   }
 }
 
@@ -157,16 +107,11 @@ export function calculateMatchScore(similarity: number, mode: string, calibratio
   }
 }
 
-export async function callScraperLLM(prompt: string, provider: 'ollama' | 'builtin'): Promise<string> {
+export async function callScraperLLM(prompt: string): Promise<string> {
   const { getDb } = await import('@/lib/db');
   const db = getDb();
   
-  if (provider === 'ollama') {
-    const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('scraper_ai_model') as { value: string };
-    const overrideModel = modelSetting ? modelSetting.value : 'deepseek-r1';
-    return generateTextOllama(prompt, overrideModel);
-  } else {
-    // Builtin doesn't have a separate scraper model setting yet, just use the normal one
-    return generateTextBuiltin(prompt);
-  }
+  const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('scraper_ai_model') as { value: string };
+  const overrideModel = modelSetting ? modelSetting.value : 'deepseek-r1';
+  return generateTextOllama(prompt, overrideModel);
 }

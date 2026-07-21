@@ -297,10 +297,6 @@ function logActivityInternal(action: string, jobId?: number) {
 
 export async function generateResumeSuggestions(jobId: number, resumeMaterialId: number, contextMaterialIds: number[]) {
   const db = getDb();
-  
-  const providerSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_provider') as any;
-  const provider = providerSetting ? providerSetting.value : 'ollama';
-
   const job = db.prepare('SELECT title, company, description FROM jobs WHERE id = ?').get(jobId) as any;
   if (!job || !job.description) {
     throw new Error('Job description is missing. Cannot generate tailored suggestions without a job description.');
@@ -372,32 +368,26 @@ Please suggest exactly 3 to 5 specific, actionable bullet point tweaks I should 
     .replace('{resumeText}', resume.text.slice(0, 4000))
     .replace('{contextFiles}', contextText);
 
-  const { generateTextBuiltin, generateTextOllama } = await import('@/lib/ml');
+  const { generateTextOllama } = await import('@/lib/ml');
 
-  if (provider === 'ollama') {
-    try {
-      let suggestions = await generateTextOllama(prompt);
-      let thinking = '';
-      const thinkMatch = suggestions.match(/<think>([\s\S]*?)<\/think>/);
-      if (thinkMatch) {
-        thinking = thinkMatch[1].trim();
-        suggestions = suggestions.replace(/<think>[\s\S]*?<\/think>/, '').trim();
-      }
-      db.prepare('UPDATE jobs SET latest_resume_suggestions = ? WHERE id = ?').run(suggestions, jobId);
-      return { success: true, suggestions, thinking };
-    } catch (err: any) {
-      if (err.message === 'OLLAMA_NOT_RUNNING') {
-        return { success: false, error: 'OLLAMA_NOT_RUNNING' };
-      }
-      if (err.message === 'OLLAMA_MODEL_NOT_FOUND') {
-        return { success: false, error: 'OLLAMA_MODEL_NOT_FOUND' };
-      }
-      throw err;
+  try {
+    let suggestions = await generateTextOllama(prompt);
+    let thinking = '';
+    const thinkMatch = suggestions.match(/<think>([\s\S]*?)<\/think>/);
+    if (thinkMatch) {
+      thinking = thinkMatch[1].trim();
+      suggestions = suggestions.replace(/<think>[\s\S]*?<\/think>/, '').trim();
     }
-  } else {
-    const suggestions = await generateTextBuiltin(prompt);
     db.prepare('UPDATE jobs SET latest_resume_suggestions = ? WHERE id = ?').run(suggestions, jobId);
-    return { success: true, suggestions };
+    return { success: true, suggestions, thinking };
+  } catch (err: any) {
+    if (err.message === 'OLLAMA_NOT_RUNNING') {
+      return { success: false, error: 'OLLAMA_NOT_RUNNING' };
+    }
+    if (err.message === 'OLLAMA_MODEL_NOT_FOUND') {
+      return { success: false, error: 'OLLAMA_MODEL_NOT_FOUND' };
+    }
+    throw err;
   }
 }
 
@@ -593,9 +583,6 @@ export async function getCalibrationStatus() {
 export async function generateCalibrationProfile(materialIds: number[], previousSummary?: string, feedback?: string) {
   const db = getDb();
 
-  const providerSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_provider') as any;
-  const provider = providerSetting ? providerSetting.value : 'ollama';
-
   let combinedText = '';
   for (const id of materialIds) {
     const material = db.prepare('SELECT name, filename, type FROM materials WHERE id = ?').get(id) as any;
@@ -627,13 +614,8 @@ Respond with ONLY the summary and no intro text.`;
 
   profilePrompt += `\nDocuments:\n"""\n${combinedText.slice(0, 4000)}\n"""`;
 
-  const { generateTextBuiltin, generateTextOllama } = await import('@/lib/ml');
-  let applicantProfile = '';
-  if (provider === 'ollama') {
-    applicantProfile = await generateTextOllama(profilePrompt);
-  } else {
-    applicantProfile = await generateTextBuiltin(profilePrompt);
-  }
+  const { generateTextOllama } = await import('@/lib/ml');
+  let applicantProfile = await generateTextOllama(profilePrompt);
 
   return applicantProfile;
 }
@@ -657,10 +639,6 @@ export async function startSmartCalibration(materialIds: number[], approvedProfi
 
 async function runCalibrationBackground(approvedProfile: string) {
   const db = getDb();
-  
-  const providerSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_provider') as any;
-  const provider = providerSetting ? providerSetting.value : 'ollama';
-
   const updateStatus = (status: string, progress: number) => {
     db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('calibration_status', status);
     db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('calibration_progress', progress.toString());
@@ -668,7 +646,7 @@ async function runCalibrationBackground(approvedProfile: string) {
 
   try {
     updateStatus('Saving profile and preparing to generate jobs...', 10);
-    const { cosineSimilarity, generateTextBuiltin, generateTextOllama, generateEmbedding } = await import('@/lib/ml');
+    const { cosineSimilarity, generateTextOllama, generateEmbedding } = await import('@/lib/ml');
 
     const applicantProfile = approvedProfile;
 
@@ -711,9 +689,7 @@ Write a ${length.toLowerCase()} length job description that is ${categoryDesc}.
 Try to naturally align the job's expected experience level with the seniority mentioned in the profile (if applicable), but you do not need to be overly strict.
 Do not include any introductory or concluding text. ONLY write the job description text.`;
 
-        let fakeJob = '';
-        if (provider === 'ollama') fakeJob = await generateTextOllama(jobPrompt);
-        else fakeJob = await generateTextBuiltin(jobPrompt);
+        let fakeJob = await generateTextOllama(jobPrompt);
 
         const jobEmbedding = await generateEmbedding(fakeJob);
         
@@ -757,12 +733,12 @@ Do not include any introductory or concluding text. ONLY write the job descripti
 
 // --- SCRAPER ACTIONS ---
 
-export async function startScraper(url: string, website: string, focus: string, minMatch: number, minGoalMatch: number, provider: 'ollama'|'builtin' = 'builtin') {
+export async function startScraper(url: string, website: string, focus: string, minMatch: number, minGoalMatch: number) {
   const db = getDb();
   db.prepare("INSERT INTO settings (key, value) VALUES ('scraper_cancel_requested', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'").run();
   import('@/lib/scraper').then(async scraper => {
     try {
-      await scraper.runScraperTask(url, website, focus, minMatch, minGoalMatch, provider);
+      await scraper.runScraperTask(url, website, focus, minMatch, minGoalMatch);
     } catch (err) {
       console.error(err);
     } finally {
@@ -788,7 +764,7 @@ function buildSearchQuery(focus: string) {
   return positiveTerms.join(' ');
 }
 
-export async function startSequentialScraper(sites: any[], focus: string, minMatch: number, minGoalMatch: number, provider: 'ollama'|'builtin' = 'builtin') {
+export async function startSequentialScraper(sites: any[], focus: string, minMatch: number, minGoalMatch: number) {
   const db = getDb();
   db.prepare("INSERT INTO settings (key, value) VALUES ('scraper_cancel_requested', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'").run();
   
@@ -823,7 +799,7 @@ export async function startSequentialScraper(sites: any[], focus: string, minMat
           const currentPage = pageMap[site.url] || 1;
 
           try {
-            const result = await scraper.runScraperTask(site.url, site.name, focus, minMatch, minGoalMatch, provider, currentPage);
+            const result = await scraper.runScraperTask(site.url, site.name, focus, minMatch, minGoalMatch, currentPage);
             
             if (result && result.jobsAdded > 0) {
               pageMap[site.url] = currentPage + 1;
@@ -852,7 +828,24 @@ export async function startSequentialScraper(sites: any[], focus: string, minMat
   return { success: true };
 }
 
-export async function startDeepSequentialScraper(sites: any[], focus: string, minMatch: number, minGoalMatch: number, provider: 'ollama'|'builtin' = 'ollama') {
+export async function startDeepScraper(url: string, website: string, focus: string, minMatch: number, minGoalMatch: number) {
+  const db = getDb();
+  db.prepare("INSERT INTO settings (key, value) VALUES ('scraper_cancel_requested', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'").run();
+  db.prepare("INSERT INTO settings (key, value) VALUES ('scraper_is_running', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run();
+  
+  import('@/lib/scraper').then(async scraper => {
+    try {
+      await scraper.runDeepScrapeTask(url, website, focus, minMatch, minGoalMatch);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      getDb().prepare("UPDATE settings SET value = 'false' WHERE key = 'scraper_is_running'").run();
+    }
+  });
+  return { success: true };
+}
+
+export async function startDeepSequentialScraper(sites: any[], focus: string, minMatch: number, minGoalMatch: number) {
   const db = getDb();
   db.prepare("INSERT INTO settings (key, value) VALUES ('scraper_cancel_requested', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'").run();
   db.prepare("INSERT INTO settings (key, value) VALUES ('scraper_is_running', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run();
@@ -867,7 +860,7 @@ export async function startDeepSequentialScraper(sites: any[], focus: string, mi
         }
 
         try {
-          await scraper.runDeepScrapeTask(site.url, site.name, focus, minMatch, minGoalMatch, provider);
+          await scraper.runScraperTask(site.url, site.name, focus, minMatch, minGoalMatch);
         } catch (err) {
           console.error(`[DeepScrape] Error on ${site.name}:`, err);
         }
@@ -1181,20 +1174,13 @@ ${job.description || ''}
 Output your response as a pure JSON object with the keys "title", "company", "location", "description", and "isNotJob".
 Do not include markdown blocks, explanations, or any other text outside the JSON.`;
 
-  const providerSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_provider') as any;
-  const provider = providerSetting ? providerSetting.value : 'ollama';
-
-  const { generateTextBuiltin, generateTextOllama } = await import('@/lib/ml');
+  const { generateTextOllama } = await import('@/lib/ml');
 
   let responseText = '';
   try {
-    if (provider === 'ollama') {
-      responseText = await generateTextOllama(prompt);
-      // Remove thinking blocks
-      responseText = responseText.replace(/<think>[\s\S]*?<\/think>/, '').trim();
-    } else {
-      responseText = await generateTextBuiltin(prompt);
-    }
+    responseText = await generateTextOllama(prompt);
+    // Remove thinking blocks
+    responseText = responseText.replace(/<think>[\s\S]*?<\/think>/, '').trim();
 
     // Try to extract JSON if wrapped in markdown or other text
     let jsonMatch = responseText.match(/\{[\s\S]*\}/);

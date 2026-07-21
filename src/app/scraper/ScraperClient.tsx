@@ -139,8 +139,7 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
     }
     setIsRunning(true);
     await saveFocusToSettings(focus);
-    const aiProvider = settings['ai_provider'] || 'builtin';
-    await startScraper(url, website, focus, minMatch, minGoalMatch, aiProvider);
+    await startScraper(url, website, focus, minMatch, minGoalMatch);
     alert('Scraper started in background! Check logs shortly.');
   };
 
@@ -148,15 +147,14 @@ export default function ScraperClient({ initialJobs, initialLogs, settings }: { 
     setIsRunning(true);
     await saveFocusToSettings(focus);
     alert('Starting sequential scraper for default sites in the background!');
-    const aiProvider = settings['ai_provider'] || 'builtin';
-    await startSequentialScraper(DEFAULT_SITES, focus, minMatch, minGoalMatch, aiProvider);
+    await startSequentialScraper(DEFAULT_SITES, focus, minMatch, minGoalMatch);
   };
 
   const handleDeepScrapeDefaults = async () => {
     setIsRunning(true);
     await saveFocusToSettings(focus);
     alert('Starting DEEP AGENTIC scraper for default sites in the background (using Ollama)! This will be slow.');
-    await startDeepSequentialScraper(DEFAULT_SITES, focus, minMatch, minGoalMatch, 'ollama');
+    await startDeepSequentialScraper(DEFAULT_SITES, focus, minMatch, minGoalMatch);
   };
 
   const handleMove = async (id: number) => {

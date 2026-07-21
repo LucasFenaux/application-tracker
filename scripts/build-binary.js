@@ -70,11 +70,27 @@ _Module.prototype.require = function(id) {
 const _fs = require('fs');
 const _path = require('path');
 const _os = require('os');
-const onnxTmpDir = _path.join(_os.tmpdir(), 'application-tracker-onnx');
+const onnxTmpDir = _path.join(_os.tmpdir(), 'application-tracker-onnx-v3');
+const targetFile = _path.join(onnxTmpDir, 'napi-v3', process.platform, process.arch, 'onnxruntime_binding.node');
 try {
-  if (!_fs.existsSync(onnxTmpDir)) {
-    _fs.mkdirSync(onnxTmpDir, { recursive: true });
-    _fs.cpSync(_path.join(__dirname, 'node_modules/onnxruntime-node/bin'), onnxTmpDir, { recursive: true });
+  if (!_fs.existsSync(targetFile)) {
+    if (!_fs.existsSync(onnxTmpDir)) {
+      _fs.mkdirSync(onnxTmpDir, { recursive: true });
+    }
+    _fs.cpSync(_path.join(__dirname, 'onnx-bin'), onnxTmpDir, { recursive: true, force: true });
+    
+    function restoreBinaries(dir) {
+      const items = _fs.readdirSync(dir);
+      for (const item of items) {
+        const fullPath = _path.join(dir, item);
+        if (_fs.statSync(fullPath).isDirectory()) {
+          restoreBinaries(fullPath);
+        } else if (item.endsWith('.pkgasset')) {
+          _fs.renameSync(fullPath, fullPath.slice(0, -9));
+        }
+      }
+    }
+    restoreBinaries(onnxTmpDir);
   }
 } catch (e) {
   console.warn('Failed to extract onnx binaries:', e.message);
@@ -88,9 +104,22 @@ try {
 
 console.log('Copying all onnxruntime-node binaries to standalone directory...');
 const onnxSrcBin = path.join(__dirname, '../node_modules/onnxruntime-node/bin');
-const onnxDestBin = path.join(standaloneDir, 'node_modules/onnxruntime-node/bin');
+const onnxDestBin = path.join(standaloneDir, 'onnx-bin');
 if (fs.existsSync(onnxSrcBin)) {
   fs.cpSync(onnxSrcBin, onnxDestBin, { recursive: true });
+  
+  function renameBinaries(dir) {
+    const items = fs.readdirSync(dir);
+    for (const item of items) {
+      const fullPath = path.join(dir, item);
+      if (fs.statSync(fullPath).isDirectory()) {
+        renameBinaries(fullPath);
+      } else if (item.endsWith('.node') || item.endsWith('.dylib') || item.endsWith('.so') || item.endsWith('.dll')) {
+        fs.renameSync(fullPath, fullPath + '.pkgasset');
+      }
+    }
+  }
+  renameBinaries(onnxDestBin);
 }
 
 console.log('Patching onnxruntime-node binding.js to point to extracted binaries...');
@@ -99,7 +128,7 @@ if (fs.existsSync(bindingJsPath)) {
   let bindingJs = fs.readFileSync(bindingJsPath, 'utf8');
   bindingJs = bindingJs.replace(
     /\`\.\.\/bin\/napi-v3\/\$\{process\.platform\}\/\$\{process\.arch\}\/onnxruntime_binding\.node\`/g,
-    `require('path').join(require('os').tmpdir(), 'application-tracker-onnx', 'napi-v3', process.platform, process.arch, 'onnxruntime_binding.node')`
+    `require('path').join(require('os').tmpdir(), 'application-tracker-onnx-v3', 'napi-v3', process.platform, process.arch, 'onnxruntime_binding.node')`
   );
   fs.writeFileSync(bindingJsPath, bindingJs);
 }
@@ -107,9 +136,9 @@ if (fs.existsSync(bindingJsPath)) {
 console.log('Packaging into standalone executables using @yao-pkg/pkg...');
 try {
   let target = '';
-  if (process.platform === 'win32') target = 'node22-win-x64';
-  else if (process.platform === 'darwin') target = 'node22-macos-x64,node22-macos-arm64';
-  else target = 'node22-linux-x64';
+  if (process.platform === 'win32') target = 'node24-win-x64';
+  else if (process.platform === 'darwin') target = 'node24-macos-x64,node24-macos-arm64';
+  else target = 'node24-linux-x64';
   
   execSync(`npx @yao-pkg/pkg package.json -t ${target} --out-path bin`, { stdio: 'inherit' });
   
