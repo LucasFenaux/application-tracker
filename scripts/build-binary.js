@@ -75,18 +75,18 @@ try {
   let target = '';
   let outputName = '';
   if (process.platform === 'win32') {
-    target = 'node24-win-x64';
+    target = 'node22-win-x64';
     outputName = 'app-windows.exe';
   } else if (process.platform === 'darwin') {
     if (process.arch === 'arm64') {
-      target = 'node24-macos-arm64';
+      target = 'node22-macos-arm64';
       outputName = 'app-macos-arm64';
     } else {
-      target = 'node24-macos-x64';
+      target = 'node22-macos-x64';
       outputName = 'app-macos-x64';
     }
   } else {
-    target = 'node24-linux-x64';
+    target = 'node22-linux-x64';
     outputName = 'app-linux';
   }
   
