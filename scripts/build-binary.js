@@ -73,33 +73,24 @@ _Module.prototype.require = function(id) {
 console.log('Packaging into standalone executables using @yao-pkg/pkg...');
 try {
   let target = '';
-  if (process.platform === 'win32') target = 'node24-win-x64';
-  else if (process.platform === 'darwin') target = 'node24-macos-x64,node24-macos-arm64';
-  else target = 'node24-linux-x64';
-  
-  execSync(`npx @yao-pkg/pkg package.json -t ${target} --out-path bin`, { stdio: 'inherit' });
-  
-  // Rename the generated binaries to match the exact requested format
-  const files = fs.readdirSync(binDir);
-  files.forEach(file => {
-    if (file.startsWith('app-')) return; // Already renamed
-
-    const oldPath = path.join(binDir, file);
-    let newName = '';
-    
-    if (process.platform === 'linux') {
-      newName = 'app-linux';
-    } else if (process.platform === 'win32') {
-      newName = 'app-windows.exe';
-    } else if (process.platform === 'darwin') {
-      if (file.includes('arm64')) newName = 'app-macos-arm64';
-      else newName = 'app-macos';
+  let outputName = '';
+  if (process.platform === 'win32') {
+    target = 'node24-win-x64';
+    outputName = 'app-windows.exe';
+  } else if (process.platform === 'darwin') {
+    if (process.arch === 'arm64') {
+      target = 'node24-macos-arm64';
+      outputName = 'app-macos-arm64';
+    } else {
+      target = 'node24-macos-x64';
+      outputName = 'app-macos-x64';
     }
-    
-    if (newName) {
-      fs.renameSync(oldPath, path.join(binDir, newName));
-    }
-  });
+  } else {
+    target = 'node24-linux-x64';
+    outputName = 'app-linux';
+  }
+  
+  execSync(`npx @yao-pkg/pkg package.json -t ${target} --output bin/${outputName}`, { stdio: 'inherit' });
 
   console.log('Packaging successful. Binaries are available in the "bin" directory.');
 } catch (error) {
