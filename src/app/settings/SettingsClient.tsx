@@ -80,10 +80,11 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
   // System State
   const [isManuallyBackingUp, setIsManuallyBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
 
   // AI Models State
-  const [aiOllamaModel, setAiOllamaModel] = useState(settings.ai_ollama_model || 'deepseek-r1');
-  const [scraperAiModel, setScraperAiModel] = useState(settings.scraper_ai_model || 'deepseek-r1');
+  const [aiOllamaModel, setAiOllamaModel] = useState(settings.ai_ollama_model || 'llama3.2');
+  const [scraperAiModel, setScraperAiModel] = useState(settings.scraper_ai_model || 'llama3.2');
   const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
   const [isSavingAiModels, setIsSavingAiModels] = useState(false);
 
@@ -96,7 +97,7 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
   useEffect(() => {
     import('@/app/actions').then(({ getAvailableOllamaModels }) => {
       getAvailableOllamaModels().then(models => {
-        setAvailableOllamaModels(models.length > 0 ? models : ['deepseek-r1']);
+        setAvailableOllamaModels(models.length > 0 ? models : ['llama3.2']);
       });
     });
   }, []);
@@ -616,15 +617,21 @@ export default function SettingsClient({ prompts, settings, materials }: { promp
                     </p>
                     <button 
                       className="btn-secondary" 
+                      disabled={isRecalculating}
                       onClick={async () => {
-                        const res = await fetch('/api/recalc');
-                        const data = await res.json();
-                        alert(data.message || 'Recalculation complete.');
+                        setIsRecalculating(true);
+                        try {
+                          const res = await fetch('/api/recalc');
+                          const data = await res.json();
+                          alert(data.message || 'Recalculation complete.');
+                        } finally {
+                          setIsRecalculating(false);
+                        }
                       }} 
                       style={{ alignSelf: 'flex-start', color: 'var(--text-primary)' }}
                     >
-                      <RefreshCw size={16} style={{ display: 'inline', marginRight: '6px' }} /> 
-                      Recalculate All Scores
+                      {isRecalculating ? <Loader2 size={16} className="spin" style={{ display: 'inline', marginRight: '6px' }} /> : <RefreshCw size={16} style={{ display: 'inline', marginRight: '6px' }} />}
+                      {isRecalculating ? 'Recalculating...' : 'Recalculate All Scores'}
                     </button>
                   </div>
                 </div>

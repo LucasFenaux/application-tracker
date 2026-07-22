@@ -615,7 +615,7 @@ Respond with ONLY the summary and no intro text.`;
   profilePrompt += `\nDocuments:\n"""\n${combinedText.slice(0, 4000)}\n"""`;
 
   const { generateTextOllama } = await import('@/lib/ml');
-  let applicantProfile = await generateTextOllama(profilePrompt);
+  let applicantProfile = await generateTextOllama(profilePrompt, undefined, true);
 
   return applicantProfile;
 }
@@ -689,7 +689,7 @@ Write a ${length.toLowerCase()} length job description that is ${categoryDesc}.
 Try to naturally align the job's expected experience level with the seniority mentioned in the profile (if applicable), but you do not need to be overly strict.
 Do not include any introductory or concluding text. ONLY write the job description text.`;
 
-        let fakeJob = await generateTextOllama(jobPrompt);
+        let fakeJob = await generateTextOllama(jobPrompt, undefined, true);
 
         const jobEmbedding = await generateEmbedding(fakeJob);
         
@@ -1393,3 +1393,29 @@ export async function recalculateMatchScoreForJob(table: string, id: number, tex
   }
 }
 
+export async function checkOllamaSetup() {
+  try {
+    const response = await fetch('http://127.0.0.1:11434/api/tags', {
+      signal: AbortSignal.timeout(2000)
+    });
+    if (!response.ok) {
+      return { isRunning: true, hasEmbedding: false, hasLlm: false, models: [] };
+    }
+    const data = await response.json();
+    const models = data.models || [];
+    
+    const embeddingModels = ['nomic-embed-text', 'all-minilm', 'bge-m3', 'snowflake-arctic-embed'];
+    const hasEmbedding = models.some((m: any) => embeddingModels.some(em => m.name.includes(em)));
+    
+    const hasLlm = models.some((m: any) => !embeddingModels.some(em => m.name.includes(em)));
+    
+    return {
+      isRunning: true,
+      hasEmbedding,
+      hasLlm,
+      models: models.map((m: any) => m.name)
+    };
+  } catch (err) {
+    return { isRunning: false, hasEmbedding: false, hasLlm: false, models: [] };
+  }
+}

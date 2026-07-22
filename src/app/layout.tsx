@@ -3,6 +3,7 @@ import './globals.css';
 import Link from 'next/link';
 import { Briefcase, LayoutDashboard, Calendar, FolderOpen, Settings, Globe, Puzzle, Wand2 } from 'lucide-react';
 import ChatBot from '@/components/ChatBot';
+import OllamaCheckModal from '@/components/OllamaCheckModal';
 
 export const metadata: Metadata = {
   title: 'Application Tracker',
@@ -72,6 +73,7 @@ export default function RootLayout({
             {children}
           </main>
           <ChatBot />
+          <OllamaCheckModal />
         </div>
       </body>
     </html>

@@ -1,11 +1,25 @@
 export async function generateEmbedding(text: string): Promise<number[]> {
   if (!text || text.trim() === '') return [];
   try {
+    let embedModel = 'nomic-embed-text';
+    try {
+      const tagsResponse = await fetch('http://127.0.0.1:11434/api/tags');
+      if (tagsResponse.ok) {
+        const data = await tagsResponse.json();
+        const models = data.models || [];
+        const validModels = ['nomic-embed-text', 'all-minilm', 'bge-m3', 'snowflake-arctic-embed'];
+        const found = models.find((m: any) => validModels.some(v => m.name.includes(v)));
+        if (found) embedModel = found.name;
+      }
+    } catch (e) {
+      // Ignore fetch errors, fallback to default
+    }
+
     const response = await fetch('http://127.0.0.1:11434/api/embeddings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'nomic-embed-text', // You may need to have this model downloaded in Ollama: ollama pull nomic-embed-text
+        model: embedModel,
         prompt: text
       })
     });
@@ -20,14 +34,14 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 }
 
-export async function generateTextOllama(prompt: string, overrideModel?: string): Promise<string> {
+export async function generateTextOllama(prompt: string, overrideModel?: string, stripThinkTags: boolean = false): Promise<string> {
   try {
     const { getDb } = await import('@/lib/db');
     const db = getDb();
     let modelName = overrideModel;
     if (!modelName) {
       const modelSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_ollama_model') as { value: string };
-      modelName = modelSetting ? modelSetting.value : 'deepseek-r1';
+      modelName = modelSetting ? modelSetting.value : 'llama3.2';
     }
 
     const response = await fetch('http://127.0.0.1:11434/api/generate', {
@@ -49,7 +63,11 @@ export async function generateTextOllama(prompt: string, overrideModel?: string)
     }
 
     const data = await response.json();
-    return data.response.trim();
+    let text = data.response.trim();
+    if (stripThinkTags) {
+      text = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    }
+    return text;
   } catch (err: any) {
     if (err.name === 'TypeError' || err.message.includes('fetch') || err.message.includes('ECONNREFUSED')) {
       throw new Error('OLLAMA_NOT_RUNNING');
